@@ -198,9 +198,7 @@ public class DocumentService {
                 return existing;
             }
         }
-        return DocumentGroup.builder()
-                .groupName(groupName)
-                .build();
+        return DocumentGroup.builder().groupName(groupName).build();
     }
 
     // ─── Save Recipients ────────────────────────────────────────────────
@@ -360,7 +358,8 @@ public class DocumentService {
         }
 
         List<Document> documents = documentRepository.findByDocumentGroup_GroupId(groupId);
-        List<DocumentResponse> docResponses = documents.stream().map(this::toDocumentResponse).toList();
+        List<DocumentResponse> docResponses =
+                documents.stream().map(this::toDocumentResponse).toList();
 
         // Build recipients + fields from the first document (all docs share the same signers/fields structure)
         List<RecipientResponse> recipientResponses = new ArrayList<>();
@@ -368,7 +367,8 @@ public class DocumentService {
 
         if (!documents.isEmpty()) {
             Document primaryDoc = documents.get(0);
-            List<DocumentSigner> signers = documentSignerRepository.findByDocument_DocumentId(primaryDoc.getDocumentId());
+            List<DocumentSigner> signers =
+                    documentSignerRepository.findByDocument_DocumentId(primaryDoc.getDocumentId());
 
             // Build email -> signerId map for field mapping
             Map<Integer, Integer> signerIdMap = new HashMap<>(); // docSignerId -> index in recipientResponses
@@ -397,7 +397,10 @@ public class DocumentService {
 
                     fieldResponses.add(FieldResponse.builder()
                             .fieldId(sf.getFieldId())
-                            .type(sf.getFieldType() != null ? sf.getFieldType().name().toLowerCase() : "signature")
+                            .type(
+                                    sf.getFieldType() != null
+                                            ? sf.getFieldType().name().toLowerCase()
+                                            : "signature")
                             .page(sf.getPageNumber())
                             .fileIndex(docIdx)
                             .x(sf.getPosX())
