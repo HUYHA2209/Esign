@@ -1,0 +1,42 @@
+server:
+  port: 8000
+  servlet:
+    context-path: /esign
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+  datasource:
+    url: "jdbc:mysql://localhost:3306/esign_dtb"
+    driverClassName: "com.mysql.cj.jdbc.Driver"
+    username: root
+    password: 123456
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: "hahuy3182004@gmail.com "
+    password: "dfuo afpl rbcg nlcx nmnm"
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+jwt:
+  signerKey: "Fq7Yy2toMGICCK6a0GIIuZUMlcKxe5SAjC42eqBi0taBvpcKAXcysVHkkx7IDkJ+"
+
+minio:
+  url: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin

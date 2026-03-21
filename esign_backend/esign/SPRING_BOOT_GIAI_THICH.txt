@@ -1,0 +1,385 @@
+
+================================================================================
+         GIẢI THÍCH CẤU TRÚC & LUỒNG HOẠT ĐỘNG SPRING BOOT - DỰ ÁN ESIGN
+================================================================================
+
+Tác giả tài liệu: Antigravity AI Assistant
+Dự án: eSign Backend (Spring Boot)
+Ngày: 15/03/2026
+
+================================================================================
+I. TỔNG QUAN CẤU TRÚC THƯ MỤC
+================================================================================
+
+src/main/java/com/spring/esign/
+│
+├── EsignApplication.java          ← Điểm khởi động của toàn bộ ứng dụng
+│
+├── configuration/                 ← Cấu hình hệ thống
+│   ├── SecurityConfig.java        ← Cấu hình Spring Security (JWT, phân quyền)
+│   ├── CustomJWTDecoder.java      ← Giải mã & xác thực JWT token
+│   ├── JwtAuthenticationEntryPoint.java ← Xử lý lỗi 401 Unauthorized
+│   ├── RedisConfig.java           ← Cấu hình kết nối Redis
+│   ├── MinioConfig.java           ← Cấu hình kết nối Minio (lưu file)
+│   └── WebAuthnConfig.java        ← Cấu hình WebAuthn (xác thực sinh trắc học)
+│
+├── controller/                    ← Nhận HTTP Request từ client
+│   ├── AuthenticationController.java  ← Đăng ký, đăng nhập, logout, refresh token
+│   ├── UserController.java            ← Quản lý thông tin người dùng
+│   ├── DocumentController.java        ← Quản lý tài liệu ký số
+│   ├── SignatureController.java       ← Quản lý chữ ký
+│   ├── OrganizationController.java    ← Quản lý tổ chức/tài khoản
+│   ├── ForgotPasswordController.java  ← Quên mật khẩu / đặt lại mật khẩu
+│   └── WebAuthnController.java        ← Đăng nhập qua WebAuthn (vân tay, Face ID)
+│
+├── service/                       ← Xử lý logic nghiệp vụ
+│   ├── AuthenticationService.java ← Logic đăng nhập, tạo JWT, refresh token
+│   ├── UserService.java           ← Logic liên quan đến người dùng
+│   ├── DocumentService.java       ← Logic xử lý tài liệu (upload, send, sign)
+│   ├── SignatureService.java      ← Logic lưu/lấy chữ ký
+│   ├── OrganizationService.java   ← Logic tổ chức, thêm thành viên
+│   ├── EmailService.java          ← Gửi email (OTP, thông báo, xác thực)
+│   ├── RedisOtpService.java       ← Lưu/xác thực OTP qua Redis
+│   ├── RateLimitService.java      ← Giới hạn số lần gửi OTP (chống spam)
+│   ├── MinioService.java          ← Upload/download file lên Minio
+│   └── WebAuthnService.java       ← Logic đăng ký & xác thực WebAuthn
+│
+├── repository/                    ← Giao tiếp với Database (JPA)
+│   ├── UserRepository.java            ← CRUD bảng users
+│   ├── AccountRepository.java         ← CRUD bảng accounts
+│   ├── AccountMemberRepository.java   ← CRUD bảng account_members
+│   ├── DocumentRepository.java        ← CRUD bảng documents
+│   ├── DocumentSignerRepository.java  ← CRUD bảng document_signers
+│   ├── DocumentGroupRepository.java   ← CRUD bảng document_groups
+│   ├── SignatureRepository.java       ← CRUD bảng signatures
+│   ├── SignatureFieldRepository.java  ← CRUD bảng signature_fields
+│   ├── InvalidatedTokenRepository.java ← Lưu token đã bị thu hồi (logout)
+│   ├── TokenRefreshRepository.java    ← Lưu refresh token
+│   ├── ForgotPasswordRepository.java  ← Lưu yêu cầu quên mật khẩu
+│   ├── ActivityLogRepository.java     ← Log hoạt động
+│   └── UsersKeysRepository.java       ← Lưu khóa công khai WebAuthn
+│
+├── entity/                        ← Ánh xạ bảng Database (JPA Entity)
+│   ├── User.java                  ← Bảng users (id, email, password, ...)
+│   ├── Account.java               ← Bảng accounts (cá nhân/tổ chức)
+│   ├── AccountMember.java         ← Thành viên trong tổ chức
+│   ├── Document.java              ← Tài liệu cần ký
+│   ├── DocumentSigner.java        ← Người ký của tài liệu
+│   ├── DocumentGroup.java         ← Nhóm tài liệu
+│   ├── SignatureField.java         ← Vị trí ký trên tài liệu
+│   ├── Signatures.java            ← Lưu dữ liệu chữ ký
+│   ├── InvalidatedToken.java      ← Token đã logout
+│   ├── RefreshToken.java          ← Refresh JWT token
+│   ├── ForgotPassword.java        ← Token quên mật khẩu
+│   ├── ActivityLog.java           ← Nhật ký hoạt động
+│   └── UsersKeys.java             ← Khóa WebAuthn của user
+│
+├── dto/                           ← Data Transfer Object (dữ liệu vào/ra API)
+│   ├── request/                   ← Dữ liệu CLIENT gửi LÊN server
+│   │   ├── UserCreationRequest.java       ← Tạo tài khoản mới
+│   │   ├── AuthenticationRequest.java     ← Đăng nhập (email + password)
+│   │   ├── VerifyEmailRequest.java        ← Xác thực email bằng OTP
+│   │   ├── CheckOtpRequest.java           ← Kiểm tra mã OTP
+│   │   ├── ResendOtpRequest.java          ← Gửi lại OTP
+│   │   ├── RefreshTokenRequest.java       ← Làm mới token
+│   │   ├── LogoutRequest.java             ← Đăng xuất
+│   │   ├── IntrospectRequest.java         ← Kiểm tra token còn hợp lệ không
+│   │   ├── SaveDraftDocumentRequest.java  ← Lưu nháp tài liệu
+│   │   ├── SendDocumentRequest.java       ← Gửi tài liệu đến người ký
+│   │   ├── SignatureCreationRequest.java  ← Tạo chữ ký mới
+│   │   ├── NewPasswordRequest.java        ← Đặt mật khẩu mới
+│   │   ├── ResetPasswordRequest.java      ← Reset mật khẩu
+│   │   ├── OrganizationCreationRequest.java ← Tạo tổ chức
+│   │   └── ... (và nhiều request DTO khác)
+│   │
+│   └── response/                  ← Dữ liệu server TRẢ VỀ cho client
+│       ├── ApiResponse.java           ← Wrapper chung cho mọi response
+│       ├── AuthenticationResponse.java ← Token sau khi đăng nhập
+│       ├── UserSearchResponse.java    ← Thông tin user trả về
+│       ├── DocumentResponse.java      ← Thông tin tài liệu
+│       ├── SignatureResponse.java     ← Thông tin chữ ký
+│       └── ... (và các response DTO khác)
+│
+├── mapper/                        ← Chuyển đổi Entity <-> DTO (dùng MapStruct)
+│   ├── UserMapper.java            ← Chuyển User entity <-> User DTO
+│   └── OrganizationMapper.java    ← Chuyển Organization entity <-> DTO
+│
+├── exception/                     ← Xử lý ngoại lệ toàn cục
+│   ├── AppException.java          ← Exception tùy chỉnh của ứng dụng
+│   ├── ErrorCode.java             ← Enum chứa tất cả mã lỗi (USER_NOT_EXISTED, ...)
+│   └── GlobalExceptionHandler.java ← Bắt tất cả exception, trả về JSON chuẩn
+│
+├── enums/                         ← Các hằng số dạng enum
+│   ├── AccountType.java           ← PERSONAL / ORGANIZATION
+│   ├── DocumentStatus.java        ← DRAFT / PENDING / SIGNED / REJECTED
+│   ├── MemberRole.java            ← ADMIN / MEMBER
+│   ├── FieldType.java             ← Loại trường ký (SIGNATURE, DATE, ...)
+│   └── SignatureType.java         ← Loại chữ ký (DRAWN, IMAGE, ...)
+│
+├── util/                          ← Các hàm tiện ích dùng chung
+│   ├── CookieUtil.java            ← Tạo/đọc/xóa HTTP Cookie (lưu refresh token)
+│   ├── EmailDomainValidator.java  ← Kiểm tra tên miền email có hợp lệ không (DNS lookup)
+│   └── HashUtil.java              ← Băm dữ liệu (SHA-256) để xác minh toàn vẹn
+│
+└── validator/                     ← (Thư mục dành cho custom validator - hiện trống)
+
+
+================================================================================
+II. LUỒNG HOẠT ĐỘNG CƠ BẢN: ĐĂNG KÝ & ĐĂNG NHẬP
+================================================================================
+
+▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+LUỒNG 1: ĐĂNG KÝ TÀI KHOẢN
+▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+
+  [CLIENT]
+     |
+     |  POST /auth/register
+     |  Body: { email, password, fullName, ... }
+     ▼
+  [SecurityConfig]  ──── Endpoint này PUBLIC, không cần JWT ────
+     |
+     ▼
+  [AuthenticationController.java]
+     |  Nhận UserCreationRequest từ body
+     |  Gọi authenticationService.register(request)
+     ▼
+  [AuthenticationService.java]
+     |  1. Kiểm tra email đã tồn tại chưa (UserRepository.existsByEmail)
+     |  2. Validate email domain (EmailDomainValidator - DNS lookup thật)
+     |  3. Mã hóa mật khẩu bằng BCrypt (PasswordEncoder)
+     |  4. Tạo User entity & lưu DB (UserRepository.save)
+     |  5. Tạo OTP ngẫu nhiên (6 số)
+     |  6. Lưu OTP vào Redis với TTL = 5 phút (RedisOtpService)
+     |  7. Gửi email chứa OTP đến người dùng (EmailService)
+     ▼
+  [UserRepository.java]   →  Lưu xuống MySQL (bảng users)
+  [RedisOtpService.java]  →  Lưu OTP vào Redis
+  [EmailService.java]     →  Gửi email SMTP
+     |
+     ▼
+  [AuthenticationController]
+     |  Trả về ApiResponse { result: "Đăng ký thành công, vui lòng xác thực email" }
+     ▼
+  [CLIENT]  ← Nhận thông báo thành công
+
+
+  ── Người dùng nhập OTP từ email ──
+
+  [CLIENT]
+     |  POST /auth/verify-email
+     |  Body: { email, otp }
+     ▼
+  [AuthenticationController]  →  [AuthenticationService]
+     |  1. Lấy OTP từ Redis theo key = "otp:<email>"
+     |  2. So sánh OTP người dùng gửi vs OTP trong Redis
+     |  3. Nếu đúng: update User.emailVerified = true, xóa OTP khỏi Redis
+     |  4. Nếu sai: trả lỗi INVALID_OTP
+     ▼
+  [CLIENT]  ← Tài khoản đã được xác thực
+
+
+▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+LUỒNG 2: ĐĂNG NHẬP & SỬ DỤNG API CÓ BẢO MẬT
+▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+
+BƯỚC 1 - ĐĂNG NHẬP:
+
+  [CLIENT]
+     |
+     |  POST /auth/login
+     |  Body: { email, password }
+     ▼
+  [SecurityConfig]  ──── Endpoint này PUBLIC ────
+     |
+     ▼
+  [AuthenticationController]
+     |  Gọi authenticationService.authenticate(request)
+     ▼
+  [AuthenticationService]
+     |  1. Tìm User theo email (UserRepository.findByEmail)
+     |  2. So sánh password bằng BCrypt (passwordEncoder.matches)
+     |  3. Kiểm tra email đã xác thực chưa
+     |  4. Kiểm tra account có bị khóa không
+     |  5. Tạo Access Token (JWT - thời hạn 1 giờ)
+     |  6. Tạo Refresh Token (JWT - thời hạn 30 ngày)
+     |  7. Lưu Refresh Token vào DB (TokenRefreshRepository)
+     |  8. Lưu Refresh Token vào HttpOnly Cookie (CookieUtil)
+     ▼
+  [AuthenticationController]
+     |  Trả về AuthenticationResponse { accessToken, ... }
+     ▼
+  [CLIENT]  ← Nhận Access Token → lưu vào memory/sessionStorage
+
+
+BƯỚC 2 - GỌI API CÓ BẢO MẬT (ví dụ: lấy danh sách tài liệu):
+
+  [CLIENT]
+     |
+     |  GET /documents
+     |  Header: Authorization: Bearer <accessToken>
+     ▼
+  [SecurityConfig] ──── Endpoint này PROTECTED ────
+     |
+     ▼
+  [CustomJWTDecoder]
+     |  1. Lấy token từ header Authorization
+     |  2. Xác thực chữ ký JWT bằng secret key
+     |  3. Kiểm tra token có trong danh sách InvalidatedToken không
+     |     (nếu có → token đã logout, từ chối)
+     |  4. Kiểm tra hạn sử dụng (exp claim)
+     |  5. Nếu hợp lệ → trích xuất userId, roles từ token
+     ▼
+  [SecurityConfig]
+     |  Kiểm tra user có quyền truy cập endpoint này không (SCOPE_USER, ...)
+     ▼
+  [DocumentController]
+     |  Nhận request, gọi documentService.getDocuments(userId)
+     ▼
+  [DocumentService]
+     |  1. Gọi DocumentRepository để lấy danh sách documents
+     |  2. Map Entity → DocumentResponse DTO
+     ▼
+  [DocumentRepository]  →  Query xuống MySQL
+     ▼
+  [DocumentController]
+     |  Wrap vào ApiResponse { code: 1000, result: [...] }
+     ▼
+  [CLIENT]  ← Nhận JSON danh sách tài liệu
+
+
+BƯỚC 3 - REFRESH TOKEN KHI ACCESS TOKEN HẾT HẠN:
+
+  [CLIENT]
+     |  POST /auth/refresh-token
+     |  Cookie: refreshToken=<refresh_token>   ← tự động gửi kèm
+     ▼
+  [AuthenticationService]
+     |  1. Đọc Refresh Token từ Cookie (CookieUtil)
+     |  2. Xác thực Refresh Token
+     |  3. Kiểm tra có trong DB không (TokenRefreshRepository)
+     |  4. Tạo Access Token mới
+     ▼
+  [CLIENT]  ← Nhận Access Token mới, tiếp tục sử dụng
+
+
+BƯỚC 4 - ĐĂNG XUẤT:
+
+  [CLIENT]
+     |  POST /auth/logout
+     |  Header: Authorization: Bearer <accessToken>
+     ▼
+  [AuthenticationService]
+     |  1. Lấy JWT ID (jti) từ Access Token
+     |  2. Lưu jti vào bảng InvalidatedToken (blacklist)
+     |  3. Xóa Refresh Token khỏi DB
+     |  4. Xóa Cookie chứa Refresh Token
+     ▼
+  [CLIENT]  ← Đã đăng xuất, Access Token cũ không còn dùng được
+
+
+================================================================================
+III. LUỒNG XỬ LÝ KHI CÓ LỖI
+================================================================================
+
+  [Bất kỳ Service nào]
+     |  throw new AppException(ErrorCode.USER_NOT_EXISTED)
+     ▼
+  [GlobalExceptionHandler]
+     |  @ExceptionHandler(AppException.class)
+     |  Bắt exception, đọc ErrorCode
+     |  Trả về ApiResponse { code: 1003, message: "User not existed" }
+     ▼
+  [CLIENT]  ← Nhận JSON lỗi với mã lỗi rõ ràng
+
+
+================================================================================
+IV. GIẢI THÍCH CÁC KHÁI NIỆM QUAN TRỌNG
+================================================================================
+
+1. JWT (JSON Web Token)
+   - Là chuỗi token mã hóa chứa thông tin user (userId, email, roles)
+   - Gồm 3 phần: Header.Payload.Signature (phân cách bằng dấu chấm)
+   - Server không cần lưu token, chỉ cần xác thực chữ ký
+   - Access Token: ngắn hạn (~1 giờ), dùng để gọi API
+   - Refresh Token: dài hạn (~30 ngày), dùng để lấy Access Token mới
+
+2. BCrypt
+   - Thuật toán mã hóa mật khẩu một chiều (không thể giải mã)
+   - Khi đăng nhập: so sánh mật khẩu thô với hash trong DB
+
+3. Redis
+   - Là database trong bộ nhớ (in-memory), cực kỳ nhanh
+   - Dùng để: lưu OTP tạm thời (có TTL tự xóa), rate limiting
+
+4. Spring Security Filter Chain
+   - Mọi request HTTP đều đi qua chuỗi filter
+   - SecurityConfig khai báo endpoint nào public, endpoint nào cần JWT
+
+5. JPA / Hibernate
+   - Framework ánh xạ Java class (Entity) → bảng Database
+   - Repository cung cấp các hàm CRUD sẵn có, không cần viết SQL thủ công
+
+6. DTO (Data Transfer Object)
+   - Tách biệt dữ liệu API với dữ liệu trong DB
+   - Request DTO: validate dữ liệu đầu vào (@NotBlank, @Email, ...)
+   - Response DTO: chỉ trả về những field cần thiết, ẩn thông tin nhạy cảm
+
+7. MapStruct (Mapper)
+   - Tự động sinh code chuyển đổi Entity ↔ DTO lúc compile
+   - Nhanh hơn reflection, an toàn hơn thủ công
+
+8. Minio
+   - Object Storage tự host (tương tự AWS S3)
+   - Dùng để lưu file PDF, ảnh chữ ký của người dùng
+
+9. WebAuthn
+   - Chuẩn xác thực không cần mật khẩu (vân tay, Face ID, USB key)
+   - UsersKeys lưu khóa công khai của thiết bị đã đăng ký
+
+10. ApiResponse<T>
+    - Wrapper chuẩn cho tất cả response của API
+    - Format: { "code": 1000, "message": "Success", "result": { ... } }
+    - code 1000 = thành công, code khác = lỗi (xem ErrorCode.java)
+
+
+================================================================================
+V. SƠ ĐỒ TỔNG QUAN KIẾN TRÚC LAYERED
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────┐
+  │                    CLIENT (Frontend)                     │
+  │              Next.js / React Application                 │
+  └────────────────────────┬────────────────────────────────┘
+                           │  HTTP Request (REST API)
+  ┌────────────────────────▼────────────────────────────────┐
+  │              SPRING SECURITY FILTER CHAIN                │
+  │   SecurityConfig → CustomJWTDecoder → Authorization      │
+  └────────────────────────┬────────────────────────────────┘
+                           │
+  ┌────────────────────────▼────────────────────────────────┐
+  │                  CONTROLLER LAYER                        │
+  │    Nhận request, validate cơ bản, gọi Service           │
+  │   (@RestController, @RequestMapping, @RequestBody)      │
+  └────────────────────────┬────────────────────────────────┘
+                           │
+  ┌────────────────────────▼────────────────────────────────┐
+  │                   SERVICE LAYER                          │
+  │    Toàn bộ logic nghiệp vụ nằm ở đây                   │
+  │         (@Service, @Transactional)                       │
+  └──────┬─────────────────┬──────────────────┬────────────┘
+         │                 │                  │
+  ┌──────▼──────┐  ┌───────▼──────┐  ┌───────▼──────┐
+  │ REPOSITORY  │  │    REDIS     │  │    MINIO     │
+  │   LAYER     │  │  (OTP, Rate  │  │ (File Store) │
+  │(@Repository)│  │   Limiting)  │  │              │
+  └──────┬──────┘  └──────────────┘  └──────────────┘
+         │
+  ┌──────▼──────┐
+  │   DATABASE  │
+  │   (MySQL)   │
+  └─────────────┘
+
+================================================================================
+                            HẾT TÀI LIỆU
+================================================================================

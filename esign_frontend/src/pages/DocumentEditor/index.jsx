@@ -1,0 +1,552 @@
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useSensors, useSensor } from '@dnd-kit/core';
+import { pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+import { toast } from 'react-toastify';
+
+// Services & API
+import { sendDocumentFlow } from './services/sendHandlers';
+import { deleteDocument, sendDocument } from '../../service/documentApi';
+import { searchUsersByEmail } from '../../service/userApi';
+
+// Constants & Hooks
+import { fieldTypes, steps, quickActions } from './constants';
+import { SmartPointerSensor } from './components/DndComponents';
+import { useLoadDraft } from './hooks/useLoadDraft';
+import { useAutoSaveDraft } from './hooks/useAutoSaveDraft';
+
+// Components
+import EditorSidebar from './components/EditorSidebar';
+import EditorHeader from './components/EditorHeader';
+import Step1Content from './components/Step1Content';
+import Step2Content from './components/Step2Content';
+import Step3Preview from './components/Step3Preview';
+
+// Configure PDF Worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+// ═══════════════════════════════════════════════════════════
+// DocumentEditor – Orchestrator chính
+// Quản lý state + logic, delegate UI cho các Step component
+// ═══════════════════════════════════════════════════════════
+
+const DocumentEditor = () => {
+    const navigate = useNavigate();
+    const { id } = useParams();
+    const pdfScrollRef = useRef(null);
+    const lastPointerPosition = useRef({ x: 0, y: 0 });
+
+    // ─── DnD Sensors ───
+    const sensors = useSensors(
+        useSensor(SmartPointerSensor, {
+            activationConstraint: { distance: 5 },
+        })
+    );
+
+    // ─── State: Wizard Steps ───
+    const [currentStep, setCurrentStep] = useState(1);
+    const [documentName, setDocumentName] = useState(id ? 'Tài liệu đang chỉnh sửa' : 'Tài liệu mới');
+    const [isEditingName, setIsEditingName] = useState(false);
+
+    // ─── State: Files ───
+    const [uploadedFiles, setUploadedFiles] = useState([]);
+    const [isFileDragging, setIsFileDragging] = useState(false);
+    const [currentFileIndex, setCurrentFileIndex] = useState(0);
+
+    // ─── State: Recipients ───
+    const [recipients, setRecipients] = useState([
+        { id: 1, userId: null, email: '', name: '', role: 'signer', isSearching: false, searchResults: [] }
+    ]);
+    const [enableSigningOrder, setEnableSigningOrder] = useState(false);
+    const [selectedRecipient, setSelectedRecipient] = useState(1);
+
+    // ─── State: Fields & PDF ───
+    const [signatureFontSize, setSignatureFontSize] = useState(18);
+    const [fields, setFields] = useState([]);
+    const [numPages, setNumPages] = useState(null);
+    const [activeDragItem, setActiveDragItem] = useState(null);
+
+    // ─── State: UI ───
+    const [isSending, setIsSending] = useState(false);
+    const [isStepAnimating, setIsStepAnimating] = useState(false);
+    const [previewFileIndex, setPreviewFileIndex] = useState(0);
+    const [previewNumPages, setPreviewNumPages] = useState(0);
+
+    // ─── Hook: Load Draft ───
+    const { isLoading } = useLoadDraft({
+        id,
+        setDocumentName,
+        setRecipients,
+        setCurrentStep,
+        setFields,
+        setUploadedFiles,
+    });
+
+    // ─── Hook: Auto-Save Debounced ───
+    const { saveWithFiles, saveNow } = useAutoSaveDraft({
+        id,
+        documentName,
+        recipients,
+        currentStep,
+        fields,
+        uploadedFiles,
+        navigate,
+        isLoading,
+    });
+
+    // ─── PDF Callbacks ───
+    const onDocumentLoadSuccess = ({ numPages }) => setNumPages(numPages);
+    const onPreviewDocumentLoadSuccess = ({ numPages }) => setPreviewNumPages(numPages);
+
+    // Track vị trí chuột thực tế (cho DnD chính xác khi scroll)
+    useEffect(() => {
+        const onPointerMove = (e) => {
+            lastPointerPosition.current = { x: e.clientX, y: e.clientY };
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        return () => window.removeEventListener('pointermove', onPointerMove);
+    }, []);
+
+    // Step animation
+    useEffect(() => {
+        setIsStepAnimating(true);
+        const t = setTimeout(() => setIsStepAnimating(false), 250);
+        return () => clearTimeout(t);
+    }, [currentStep]);
+
+    // Ngăn trình duyệt mở file PDF khi kéo thả ra ngoài
+    useEffect(() => {
+        const preventDefault = (e) => e.preventDefault();
+        window.addEventListener('dragover', preventDefault);
+        window.addEventListener('drop', preventDefault);
+        return () => {
+            window.removeEventListener('dragover', preventDefault);
+            window.removeEventListener('drop', preventDefault);
+        };
+    }, []);
+
+    // ═══════════════════════════════════════════
+    // Drag & Drop Handlers (kéo thả trường ký)
+    // ═══════════════════════════════════════════
+
+    const handleDragStart = (event) => {
+        setActiveDragItem(event.active.data.current);
+    };
+
+    const handleDragEnd = (event) => {
+        const { active, over } = event;
+        setActiveDragItem(null);
+
+        if (!over) return;
+        if (!over.id?.toString().startsWith('page-')) return;
+
+        const { pageNumber, fileIndex } = over.data.current;
+        const pageNode = document.getElementById(`page-${fileIndex}-${pageNumber}`);
+        if (!pageNode) return;
+
+        const rect = pageNode.getBoundingClientRect();
+        const clientX = lastPointerPosition.current.x;
+        const clientY = lastPointerPosition.current.y;
+
+        const isSidebarItem = !!active.data.current.isSidebar;
+        let fieldWidth = active.data.current.width ?? 14;
+        let fieldHeight = active.data.current.height ?? 5;
+
+        let x, y;
+
+        if (isSidebarItem) {
+            const percentX = ((clientX - rect.left) / rect.width) * 100;
+            const percentY = ((clientY - rect.top) / rect.height) * 100;
+            x = percentX - fieldWidth / 2;
+            y = percentY - fieldHeight / 2;
+        } else {
+            const initialRect = active.rect.current.initial;
+            const activatorEvent = event.activatorEvent;
+            const startX = activatorEvent?.clientX ?? activatorEvent?.changedTouches?.[0]?.clientX ?? clientX;
+            const startY = activatorEvent?.clientY ?? activatorEvent?.changedTouches?.[0]?.clientY ?? clientY;
+            if (initialRect) {
+                const mouseOffsetX = startX - initialRect.left;
+                const mouseOffsetY = startY - initialRect.top;
+                x = ((clientX - mouseOffsetX - rect.left) / rect.width) * 100;
+                y = ((clientY - mouseOffsetY - rect.top) / rect.height) * 100;
+            } else {
+                const percentX = ((clientX - rect.left) / rect.width) * 100;
+                const percentY = ((clientY - rect.top) / rect.height) * 100;
+                x = percentX - fieldWidth / 2;
+                y = percentY - fieldHeight / 2;
+            }
+        }
+
+        const clampedX = Math.max(0, Math.min(x, 100 - fieldWidth));
+        const clampedY = Math.max(0, Math.min(y, 100 - fieldHeight));
+
+        const file = uploadedFiles[fileIndex];
+        const fileId = file?.id;
+
+        if (isSidebarItem) {
+            const newField = {
+                id: `field-${crypto.randomUUID()}`,
+                type: active.data.current.type,
+                page: pageNumber,
+                fileIndex,
+                fileId,
+                x: clampedX,
+                y: clampedY,
+                width: fieldWidth,
+                height: fieldHeight,
+                recipientId: selectedRecipient,
+            };
+            setFields(prev => [...prev, newField]);
+        } else {
+            const fieldId = active.id;
+            setFields(prev =>
+                prev.map(f =>
+                    f.id === fieldId
+                        ? { ...f, page: pageNumber, fileIndex, fileId, x: clampedX, y: clampedY }
+                        : f
+                )
+            );
+        }
+    };
+
+    const removeField = (id) => {
+        setFields(prev => prev.filter(f => f.id !== id));
+    };
+
+    const updateFieldSize = (id, newWidth, newHeight) => {
+        setFields(prev => prev.map(f => f.id === id ? { ...f, width: newWidth, height: newHeight } : f));
+    };
+
+    // ═══════════════════════════════════════════
+    // File Handling (upload, drag-drop file, xóa)
+    // ═══════════════════════════════════════════
+
+    const handleDragOver = useCallback((e) => {
+        e.preventDefault();
+        if (e.dataTransfer.types.includes('Files')) {
+            setIsFileDragging(true);
+        }
+    }, []);
+
+    const handleDragLeave = useCallback((e) => {
+        e.preventDefault();
+        setIsFileDragging(false);
+    }, []);
+
+    const processUploadedFiles = async (files) => {
+        const newFiles = files.map(f => ({
+            id: Date.now() + Math.random(),
+            name: f.name,
+            size: f.size,
+            file: f
+        }));
+        setUploadedFiles(prev => [...prev, ...newFiles]);
+
+        const docName = documentName === 'Tài liệu mới' ? files[0].name.replace(/\.pdf$/i, '') : documentName;
+        if (documentName === 'Tài liệu mới') {
+            setDocumentName(docName);
+        }
+
+        // ✅ Save ngay lập tức (vì cần gửi file binary)
+        await saveWithFiles(newFiles, docName);
+    };
+
+    const handleDrop = useCallback(async (e) => {
+        e.preventDefault();
+        setIsFileDragging(false);
+        if (!e.dataTransfer.types.includes('Files')) return;
+        const files = Array.from(e.dataTransfer.files).filter(file => file.type === 'application/pdf');
+        if (files.length > 0) await processUploadedFiles(files);
+    }, [documentName, id, recipients, currentStep, fields, uploadedFiles, navigate]);
+
+    const handleFileInput = async (e) => {
+        const files = Array.from(e.target.files).filter(file => file.type === 'application/pdf');
+        if (files.length > 0) await processUploadedFiles(files);
+    };
+
+    const removeFile = async (fileId) => {
+        const fileToDelete = uploadedFiles.find(f => f.id === fileId);
+        if (fileToDelete && fileToDelete.isExisting && fileToDelete.serverDocumentId) {
+            if (window.confirm('Bạn có chắc chắn muốn xóa tài liệu này? Hành động này không thể hoàn tác.')) {
+                try {
+                    await deleteDocument(fileToDelete.serverDocumentId);
+                    setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+                } catch (error) {
+                    console.error("Failed to delete document:", error);
+                    alert("Không thể xóa tài liệu. Vui lòng thử lại.");
+                }
+            }
+        } else {
+            setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+        }
+    };
+
+    // ═══════════════════════════════════════════
+    // Recipients Handling (tìm kiếm, thêm, xóa)
+    // ═══════════════════════════════════════════
+
+    const addRecipient = () => {
+        const newId = Math.floor(Math.random() * 1000000);
+        setRecipients(prev => [...prev, {
+            id: newId, userId: null, email: '', name: '', role: 'signer', isSearching: false, searchResults: []
+        }]);
+    };
+
+    const addMyself = () => {
+        const newId = Math.floor(Math.random() * 1000000);
+        setRecipients(prev => [...prev, {
+            id: newId, userId: null, email: 'nguyenvana@example.com', name: 'Nguyễn Văn A', role: 'signer', isSearching: false, searchResults: []
+        }]);
+    };
+
+    const handleEmailSearch = async (recipientId, emailValue) => {
+        setRecipients(prev => prev.map(r =>
+            r.id === recipientId ? { ...r, email: emailValue, userId: null, name: '' } : r
+        ));
+        if (emailValue.length < 2) {
+            setRecipients(prev => prev.map(r =>
+                r.id === recipientId ? { ...r, isSearching: false, searchResults: [] } : r
+            ));
+            return;
+        }
+        setRecipients(prev => prev.map(r =>
+            r.id === recipientId ? { ...r, isSearching: true } : r
+        ));
+        try {
+            const results = await searchUsersByEmail(emailValue);
+            setRecipients(prev => prev.map(r =>
+                r.id === recipientId ? { ...r, searchResults: results || [] } : r
+            ));
+        } catch (error) {
+            console.error("Tìm kiếm user thất bại:", error);
+            setRecipients(prev => prev.map(r =>
+                r.id === recipientId ? { ...r, searchResults: [] } : r
+            ));
+        }
+    };
+
+    const handleSelectUser = (recipientId, user) => {
+        if (user.canSign === false) {
+            toast.warning(`Người dùng ${user.fullName || user.email} không có quyền thực hiện thao tác ký trên hệ thống.`);
+            return;
+        }
+        setRecipients(prev => prev.map(r =>
+            r.id === recipientId ? {
+                ...r, userId: user.id, email: user.email, name: user.fullName, isSearching: false, searchResults: []
+            } : r
+        ));
+    };
+
+    const removeRecipient = (recipientId) => {
+        if (recipients.length > 1) {
+            setRecipients(prev => prev.filter(r => r.id !== recipientId));
+        }
+    };
+
+    // ═══════════════════════════════════════════
+    // Step Validation & Navigation
+    // ═══════════════════════════════════════════
+
+    const hasAtLeastOnePdf = uploadedFiles.length > 0;
+    const recipientsWithEmail = recipients.filter(r => (r.email || '').trim().length > 0);
+    const hasAtLeastOneRecipientEmail = recipientsWithEmail.length > 0;
+    const isStep1Complete = hasAtLeastOnePdf && hasAtLeastOneRecipientEmail;
+
+    const recipientsMissingFields = recipientsWithEmail.filter(r => !fields.some(f => String(f.recipientId) === String(r.id)));
+    const isStep2Complete = recipientsWithEmail.length > 0 && recipientsMissingFields.length === 0;
+    const canProceed = isStep1Complete;
+
+    const canGoToStep = useCallback((targetStep) => {
+        if (targetStep <= 1) return true;
+        if (targetStep === 2) return isStep1Complete;
+        if (targetStep === 3) return isStep1Complete && isStep2Complete;
+        return false;
+    }, [isStep1Complete, isStep2Complete]);
+
+    const goToStep = useCallback(async (targetStep) => {
+        if (targetStep === currentStep) return;
+        if (canGoToStep(targetStep)) {
+            await saveNow(); // ✅ Flush save trước khi chuyển bước
+            setCurrentStep(targetStep);
+            return;
+        }
+        if (targetStep === 2 && !isStep1Complete) {
+            toast.error('Vui lòng tải ít nhất 1 file PDF và nhập email người nhận trước khi sang bước 2.');
+            return;
+        }
+        if (targetStep === 3) {
+            if (!isStep1Complete) {
+                toast.error('Vui lòng hoàn tất bước 1 trước khi sang bước 3.');
+                return;
+            }
+            if (!isStep2Complete) {
+                if (recipientsMissingFields.length > 0) {
+                    const missingNames = recipientsMissingFields.map(r => r.name || r.email).join(', ');
+                    toast.error(`Mỗi người nhận phải có ít nhất 1 trường ký. Thiếu: ${missingNames}`);
+                } else {
+                    toast.error('Vui lòng hoàn tất bước 2 trước khi sang bước 3.');
+                }
+                return;
+            }
+        }
+    }, [canGoToStep, currentStep, isStep1Complete, isStep2Complete, recipientsMissingFields]);
+
+    // ═══════════════════════════════════════════
+    // Send & Navigation
+    // ═══════════════════════════════════════════
+
+    const handleBackNavigation = async () => {
+        await saveNow(); // ✅ Flush save trước khi rời trang
+        navigate('/documents');
+    };
+
+    const handleSendDocument = async () => {
+        if (!id) {
+            toast.error("Vui lòng lưu bản nháp trước khi gửi!");
+            return;
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const validRecipients = recipients.filter(r => r.email && r.email.trim() !== '');
+        if (validRecipients.length === 0) {
+            toast.error('Vui lòng thêm ít nhất 1 người nhận hợp lệ (email).');
+            return;
+        }
+        const emails = validRecipients.map(r => r.email.toLowerCase());
+        const dup = emails.find((e, i) => emails.indexOf(e) !== i);
+        if (dup) {
+            toast.error(`Email bị trùng: ${dup}`);
+            return;
+        }
+        for (const r of validRecipients) {
+            if (!emailRegex.test(r.email)) {
+                toast.error(`Email không hợp lệ: ${r.email}`);
+                return;
+            }
+            if ((!r.name || r.name.trim() === '') && (!r.role || r.role === 'signer')) {
+                toast.error(`Vui lòng nhập tên cho người nhận: ${r.email}`);
+                return;
+            }
+            const assignedFields = fields.filter(f => String(f.recipientId) === String(r.id));
+            if ((r.role === 'signer' || !r.role) && assignedFields.length === 0) {
+                toast.error(`Người nhận ${r.email} chưa có trường ký. Vui lòng gán ít nhất 1 trường.`);
+                return;
+            }
+        }
+        await sendDocumentFlow({
+            id, uploadedFiles, documentName, recipients, enableSigningOrder, fields, signatureFontSize,
+            sendDocument, toast, navigate, setIsSending
+        });
+    };
+
+    // ═══════════════════════════════════════════
+    // Render
+    // ═══════════════════════════════════════════
+
+    return (
+        <div className="min-h-screen bg-slate-100 flex flex-col">
+            {isLoading && (
+                <div className="fixed inset-0 bg-white/50 z-[60] flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                </div>
+            )}
+
+            <EditorHeader
+                documentName={documentName}
+                isEditingName={isEditingName}
+                setIsEditingName={setIsEditingName}
+                setDocumentName={setDocumentName}
+                handleBackNavigation={handleBackNavigation}
+                handleSendDocument={handleSendDocument}
+                canProceed={canProceed}
+                isSending={isSending}
+            />
+
+            <div className="flex flex-1 overflow-hidden">
+                <EditorSidebar
+                    steps={steps}
+                    currentStep={currentStep}
+                    goToStep={goToStep}
+                    quickActions={quickActions}
+                    handleBackNavigation={handleBackNavigation}
+                />
+
+                <main className="flex-1 overflow-hidden">
+                    <div className="h-[calc(100vh-4rem)] overflow-auto">
+
+                        {currentStep === 1 && (
+                            <Step1Content
+                                uploadedFiles={uploadedFiles}
+                                isFileDragging={isFileDragging}
+                                handleDragOver={handleDragOver}
+                                handleDragLeave={handleDragLeave}
+                                handleDrop={handleDrop}
+                                handleFileInput={handleFileInput}
+                                removeFile={removeFile}
+                                recipients={recipients}
+                                addRecipient={addRecipient}
+                                addMyself={addMyself}
+                                handleEmailSearch={handleEmailSearch}
+                                handleSelectUser={handleSelectUser}
+                                removeRecipient={removeRecipient}
+                                enableSigningOrder={enableSigningOrder}
+                                setEnableSigningOrder={setEnableSigningOrder}
+                                isStep1Complete={isStep1Complete}
+                                canProceed={canProceed}
+                                goToStep={goToStep}
+                                isStepAnimating={isStepAnimating}
+                            />
+                        )}
+
+                        {currentStep === 2 && (
+                            <Step2Content
+                                sensors={sensors}
+                                handleDragStart={handleDragStart}
+                                handleDragEnd={handleDragEnd}
+                                activeDragItem={activeDragItem}
+                                uploadedFiles={uploadedFiles}
+                                currentFileIndex={currentFileIndex}
+                                setCurrentFileIndex={setCurrentFileIndex}
+                                numPages={numPages}
+                                onDocumentLoadSuccess={onDocumentLoadSuccess}
+                                fields={fields}
+                                fieldTypes={fieldTypes}
+                                removeField={removeField}
+                                updateFieldSize={updateFieldSize}
+                                pdfScrollRef={pdfScrollRef}
+                                selectedRecipient={selectedRecipient}
+                                setSelectedRecipient={setSelectedRecipient}
+                                recipients={recipients}
+                                isStep2Complete={isStep2Complete}
+                                goToStep={goToStep}
+                                isStepAnimating={isStepAnimating}
+                            />
+                        )}
+
+                        {currentStep === 3 && (
+                            <Step3Preview
+                                uploadedFiles={uploadedFiles}
+                                previewFileIndex={previewFileIndex}
+                                setPreviewFileIndex={setPreviewFileIndex}
+                                previewNumPages={previewNumPages}
+                                onPreviewDocumentLoadSuccess={onPreviewDocumentLoadSuccess}
+                                fields={fields}
+                                recipients={recipients}
+                                isStep1Complete={isStep1Complete}
+                                isStep2Complete={isStep2Complete}
+                                isSending={isSending}
+                                handleSendDocument={handleSendDocument}
+                                goToStep={goToStep}
+                                isStepAnimating={isStepAnimating}
+                            />
+                        )}
+
+                    </div>
+                </main>
+            </div>
+        </div>
+    );
+};
+
+export default DocumentEditor;
