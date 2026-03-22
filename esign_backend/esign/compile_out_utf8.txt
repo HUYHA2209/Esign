@@ -1,0 +1,63 @@
+﻿[INFO] Scanning for projects...
+[INFO] 
+[INFO] ------------------< com.springboot:identity-service >-------------------
+[INFO] Building identity-service 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.4.1:clean (default-clean) @ identity-service ---
+[INFO] Deleting E:\Esign-project\esign_backend\esign\target
+[INFO] 
+[INFO] --- jacoco:0.8.12:prepare-agent (prepare-agent) @ identity-service ---
+[INFO] argLine set to -javaagent:C:\\Users\\Admin\\.m2\\repository\\org\\jacoco\\org.jacoco.agent\\0.8.12\\org.jacoco.agent-0.8.12-runtime.jar=destfile=E:\\Esign-project\\esign_backend\\esign\\target\\jacoco.exec
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ identity-service ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 0 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ identity-service ---
+[INFO] Changes detected - recompiling the module! :source
+[INFO] Compiling 115 source files with javac [debug release 21] to target\classes
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /E:/Esign-project/esign_backend/esign/src/main/java/com/spring/esign/service/DocumentService.java:[85,40] cannot find symbol
+  symbol:   method getDocumentId()
+  location: variable f of type com.spring.esign.dto.request.FieldRequest
+[ERROR] /E:/Esign-project/esign_backend/esign/src/main/java/com/spring/esign/service/DocumentService.java:[86,67] cannot find symbol
+  symbol:   method getDocumentId()
+  location: variable f of type com.spring.esign.dto.request.FieldRequest
+[ERROR] /E:/Esign-project/esign_backend/esign/src/main/java/com/spring/esign/service/DocumentService.java:[224,34] cannot find symbol
+  symbol:   method getDocumentId()
+  location: variable f of type com.spring.esign.dto.request.FieldRequest
+[ERROR] /E:/Esign-project/esign_backend/esign/src/main/java/com/spring/esign/service/DocumentService.java:[225,61] cannot find symbol
+  symbol:   method getDocumentId()
+  location: variable f of type com.spring.esign.dto.request.FieldRequest
+[INFO] 4 errors 
+[INFO] -------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  11.489 s
+[INFO] Finished at: 2026-03-22T18:07:50+07:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.11.0:compile (default-compile) on project identity-service: Compilation failure: Compilation failure: 
+[ERROR] /E:/Esign-project/esign_backend/esign/src/main/java/com/spring/esign/service/DocumentService.java:[85,40] cannot find symbol
+[ERROR]   symbol:   method getDocumentId()
+[ERROR]   location: variable f of type com.spring.esign.dto.request.FieldRequest
+[ERROR] /E:/Esign-project/esign_backend/esign/src/main/java/com/spring/esign/service/DocumentService.java:[86,67] cannot find symbol
+[ERROR]   symbol:   method getDocumentId()
+[ERROR]   location: variable f of type com.spring.esign.dto.request.FieldRequest
+[ERROR] /E:/Esign-project/esign_backend/esign/src/main/java/com/spring/esign/service/DocumentService.java:[224,34] cannot find symbol
+[ERROR]   symbol:   method getDocumentId()
+[ERROR]   location: variable f of type com.spring.esign.dto.request.FieldRequest
+[ERROR] /E:/Esign-project/esign_backend/esign/src/main/java/com/spring/esign/service/DocumentService.java:[225,61] cannot find symbol
+[ERROR]   symbol:   method getDocumentId()
+[ERROR]   location: variable f of type com.spring.esign.dto.request.FieldRequest
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

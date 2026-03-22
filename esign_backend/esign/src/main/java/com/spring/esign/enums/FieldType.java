@@ -4,5 +4,9 @@ public enum FieldType {
     SIGNATURE,
     TEXT,
     CHECKBOX,
-    DATE
+    DATE,
+    EMAIL,
+    NAME,
+    INITIAL,
+    NUMBER
 }

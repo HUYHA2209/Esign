@@ -43,7 +43,8 @@ export function buildSendPayload({
                 type: f.type,
                 pageNumber: f.page,
                 fileId: f.fileId,
-                fileIndex: f.fileIndex,
+                fileIndex: f.fileIndex,      // kept as fallback
+                documentId: f.documentId,    // preferred: real DB PK
                 x: f.x,
                 y: f.y,
                 width: f.width,

@@ -20,7 +20,11 @@ public enum ErrorCode {
     INVALID_EMAIL_DOMAIN(1010, "Email domain không hợp lệ hoặc là email tạm thời", HttpStatus.BAD_REQUEST),
     RATE_LIMIT_EXCEEDED(1011, "Bạn đã thao tác quá nhiều lần. Vui lòng thử lại sau", HttpStatus.TOO_MANY_REQUESTS),
     INVALID_INPUT(1012, "Dữ liệu đầu vào không hợp lệ", HttpStatus.BAD_REQUEST),
-    OTP_INVALID(1013, "Mã OTP không chính xác", HttpStatus.BAD_REQUEST);
+    OTP_INVALID(1013, "Mã OTP không chính xác", HttpStatus.BAD_REQUEST),
+    INVALID_REQUEST(1014, "Yêu cầu không hợp lệ", HttpStatus.BAD_REQUEST),
+    DOCUMENT_NOT_FOUND(1015, "Không tìm thấy tài liệu", HttpStatus.NOT_FOUND),
+    INVALID_SIGNER(1016, "Người nhận không hợp lệ", HttpStatus.BAD_REQUEST),
+    MISSING_SIGNATURE(1017, "Tài liệu hoặc người nhận đang thiếu trường chữ ký", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
         this.code = code;

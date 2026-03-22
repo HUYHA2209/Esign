@@ -46,86 +46,110 @@ public class DocumentService {
 
     @Transactional
     public void sendDocumentGroup(Integer groupId, SendDocumentRequest request) {
-        if (groupId == null) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        if (groupId == null) throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
 
+        // ── 1. Load documents sorted by PK (guaranteed order) ──
         List<Document> documents = documentRepository.findByDocumentGroup_GroupId(groupId);
-
-        if (documents == null || documents.isEmpty()) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        if (documents == null || documents.isEmpty()) throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         User currentUser = userRepository.findById(authentication.getName()).orElse(null);
         if (currentUser == null) throw new AppException(ErrorCode.UNAUTHENTICATED);
 
-        for (Document document : documents) {
-            document.setStatus(DocumentStatus.PENDING);
+        // ── 2. Build docId → Document map (O(1) lookup) ──
+        Map<Integer, Document> docIdToDoc = new HashMap<>();
+        Map<Integer, Integer> docIdToIdx = new HashMap<>();
+        for (int i = 0; i < documents.size(); i++) {
+            Document d = documents.get(i);
+            docIdToDoc.put(d.getDocumentId(), d);
+            docIdToIdx.put(d.getDocumentId(), i);
         }
 
+        // ── 3. Update status on all documents / group ──
+        for (Document document : documents) document.setStatus(DocumentStatus.PENDING);
         DocumentGroup dg = documentGroupRepository.findByGroupId(groupId);
         if (dg != null) dg.setGr_status(String.valueOf(DocumentStatus.PENDING));
-
         documentRepository.saveAll(documents);
 
-        // persist signers and signature fields for ALL documents in the group
+        // ── 4. Flatten signers+fields into Map<docId, List<FieldBundle>> ──
+        // FieldBundle = (signer email/name/role, field coords)
         List<SignerDto> signers = request != null && request.getSigners() != null ? request.getSigners() : List.of();
 
-        for (int docIdx = 0; docIdx < documents.size(); docIdx++) {
-            Document doc = documents.get(docIdx);
-
-            // clear existing signers and fields for this document
-            documentSignerRepository.deleteByDocument_DocumentId(doc.getDocumentId());
-            signatureFieldRepository.deleteByDocument_DocumentId(doc.getDocumentId());
-
-            // create signers for this specific document
-            List<DocumentSigner> toSavePerDoc = new ArrayList<>();
-            for (SignerDto sd : signers) {
-                DocumentSigner ds = DocumentSigner.builder()
-                        .document(doc)
-                        .signerEmail(sd.getEmail())
-                        .signerName(sd.getName())
-                        .role(sd.getRole() == null ? "signer" : sd.getRole())
-                        .signingOrder(sd.getSigningOrder() == null ? 1 : sd.getSigningOrder())
-                        .build();
-                toSavePerDoc.add(ds);
-            }
-
-            List<DocumentSigner> savedSignersPerDoc =
-                    toSavePerDoc.isEmpty() ? List.of() : documentSignerRepository.saveAll(toSavePerDoc);
-
-            // Map email -> signer entity for this document
-            Map<String, DocumentSigner> emailToSignerPerDoc = new HashMap<>();
-            for (DocumentSigner ds : savedSignersPerDoc)
-                emailToSignerPerDoc.put(ds.getSignerEmail().toLowerCase(), ds);
-
-            // Build signature fields that belong to this document (by fileIndex)
-            List<SignatureField> newFieldsForDoc = new ArrayList<>();
-            for (SignerDto sd : signers) {
-                DocumentSigner ds = emailToSignerPerDoc.get(sd.getEmail().toLowerCase());
-                if (sd.getFields() != null && ds != null) {
-                    for (FieldRequest f : sd.getFields()) {
-                        Integer fIndex = f.getFileIndex();
-                        boolean belongsHere = (fIndex != null) ? (fIndex.intValue() == docIdx) : (docIdx == 0);
-                        if (!belongsHere) continue;
-
-                        SignatureField sf = SignatureField.builder()
-                                .document(doc)
-                                .docSigner(ds)
-                                .pageNumber(f.getPage())
-                                .posX(f.getX())
-                                .posY(f.getY())
-                                .width(f.getWidth())
-                                .height(f.getHeight())
-                                .fieldType(mapFieldType(f.getType()))
-                                .build();
-                        newFieldsForDoc.add(sf);
+        // Map: docId → list of (SignerDto, FieldRequest)
+        Map<Integer, List<Object[]>> fieldsByDoc = new HashMap<>();
+        for (SignerDto sd : signers) {
+            if (sd.getFields() == null) continue;
+            for (FieldRequest f : sd.getFields()) {
+                // Resolve target document
+                Document targetDoc = null;
+                if (f.getDocumentId() != null) {
+                    targetDoc = docIdToDoc.get(f.getDocumentId()); // preferred: real PK
+                }
+                if (targetDoc == null && f.getFileIndex() != null) {
+                    // fallback: positional index (for older FE payloads)
+                    if (f.getFileIndex() < documents.size()) {
+                        targetDoc = documents.get(f.getFileIndex());
                     }
                 }
+                if (targetDoc == null) continue;
+                fieldsByDoc
+                        .computeIfAbsent(targetDoc.getDocumentId(), k -> new ArrayList<>())
+                        .add(new Object[] {sd, f});
             }
+        }
 
-            if (!newFieldsForDoc.isEmpty()) signatureFieldRepository.saveAll(newFieldsForDoc);
+        // ── 5. Persist signers + fields per document ──
+        for (Document doc : documents) {
+            Integer docId = doc.getDocumentId();
+
+            documentSignerRepository.deleteByDocument_DocumentId(docId);
+            signatureFieldRepository.deleteByDocument_DocumentId(docId);
+
+            List<Object[]> bundles = fieldsByDoc.getOrDefault(docId, List.of());
+            if (bundles.isEmpty()) continue;
+
+            // Collect unique signers for this doc
+            Map<String, DocumentSigner> emailToSigner = new HashMap<>();
+            List<DocumentSigner> signersToSave = new ArrayList<>();
+            for (Object[] b : bundles) {
+                SignerDto sd = (SignerDto) b[0];
+                String key = sd.getEmail().toLowerCase();
+                if (!emailToSigner.containsKey(key)) {
+                    DocumentSigner ds = DocumentSigner.builder()
+                            .document(doc)
+                            .signerEmail(sd.getEmail())
+                            .signerName(sd.getName())
+                            .role(sd.getRole() == null ? "signer" : sd.getRole())
+                            .signingOrder(sd.getSigningOrder() == null ? 1 : sd.getSigningOrder())
+                            .build();
+                    emailToSigner.put(key, ds);
+                    signersToSave.add(ds);
+                }
+            }
+            List<DocumentSigner> saved = documentSignerRepository.saveAll(signersToSave);
+            // Rebuild map with DB-assigned IDs
+            Map<String, DocumentSigner> savedMap = new HashMap<>();
+            for (DocumentSigner ds : saved) savedMap.put(ds.getSignerEmail().toLowerCase(), ds);
+
+            // Build fields
+            List<SignatureField> newFields = new ArrayList<>();
+            for (Object[] b : bundles) {
+                SignerDto sd = (SignerDto) b[0];
+                FieldRequest f = (FieldRequest) b[1];
+                DocumentSigner ds = savedMap.get(sd.getEmail().toLowerCase());
+                if (ds == null) continue;
+                newFields.add(SignatureField.builder()
+                        .document(doc)
+                        .docSigner(ds)
+                        .pageNumber(f.getPage())
+                        .posX(f.getX())
+                        .posY(f.getY())
+                        .width(f.getWidth())
+                        .height(f.getHeight())
+                        .fieldType(mapFieldType(f.getType()))
+                        .build());
+            }
+            if (!newFields.isEmpty()) signatureFieldRepository.saveAll(newFields);
         }
     }
 
@@ -175,13 +199,100 @@ public class DocumentService {
             }
         }
 
-        // 3. Save recipients and fields for all documents in the group
+        // 3. Reload docs (sorted by PK) and build Map<docId, Document> for O(1) lookup
         List<Document> allDocsInGroup = documentRepository.findByDocumentGroup_GroupId(documentGroup.getGroupId());
-        if (allDocsInGroup != null && !allDocsInGroup.isEmpty()) {
-            for (Document doc : allDocsInGroup) {
-                List<DocumentSigner> savedSigners = saveRecipients(doc, dataJson.getRecipients());
-                saveSignatureFields(doc, dataJson.getFields(), dataJson.getRecipients(), savedSigners);
+        if (allDocsInGroup == null || allDocsInGroup.isEmpty()) return documentGroup.getGroupId();
+
+        Map<Integer, Document> docIdToDoc = new HashMap<>();
+        for (Document d : allDocsInGroup) docIdToDoc.put(d.getDocumentId(), d);
+
+        // Build recipient tempId -> SignerDto map (for O(1) lookup)
+        Map<String, SignerDto> recipientMap = new HashMap<>();
+        if (dataJson.getRecipients() != null) {
+            for (SignerDto r : dataJson.getRecipients()) {
+                if (r.getId() != null) recipientMap.put(r.getId().toString(), r);
             }
+        }
+
+        // Flatten all fields into Map<docId, List<FieldEntry>>
+        // FieldEntry = (SignerDto recipient, FieldRequest field)
+        Map<Integer, List<Object[]>> fieldsByDoc = new HashMap<>();
+        if (dataJson.getFields() != null) {
+            for (FieldRequest f : dataJson.getFields()) {
+                // Resolve target document by documentId (preferred) or fileIndex (fallback)
+                Document targetDoc = null;
+                if (f.getDocumentId() != null) {
+                    targetDoc = docIdToDoc.get(f.getDocumentId());
+                }
+                if (targetDoc == null && f.getFileIndex() != null && f.getFileIndex() < allDocsInGroup.size()) {
+                    targetDoc = allDocsInGroup.get(f.getFileIndex());
+                }
+                if (targetDoc == null) continue;
+
+                SignerDto recipient = f.getRecipientId() != null
+                        ? recipientMap.get(f.getRecipientId().toString())
+                        : null;
+                if (recipient == null) continue; // skip orphan fields
+
+                fieldsByDoc
+                        .computeIfAbsent(targetDoc.getDocumentId(), k -> new ArrayList<>())
+                        .add(new Object[] {recipient, f});
+            }
+        }
+
+        // Persist signers + fields per document
+        for (Document doc : allDocsInGroup) {
+            Integer docId = doc.getDocumentId();
+
+            // Always clear old data first
+            documentSignerRepository.deleteByDocument_DocumentId(docId);
+            signatureFieldRepository.deleteByDocument_DocumentId(docId);
+
+            List<Object[]> entries = fieldsByDoc.getOrDefault(docId, List.of());
+            if (entries.isEmpty()) continue; // no fields on this doc
+
+            // Collect unique signers for this doc
+            Map<String, DocumentSigner> emailToSigner = new HashMap<>();
+            List<DocumentSigner> signersToSave = new ArrayList<>();
+            for (Object[] e : entries) {
+                SignerDto r = (SignerDto) e[0];
+                if (r.getEmail() == null) continue;
+                String key = r.getEmail().toLowerCase();
+                if (!emailToSigner.containsKey(key)) {
+                    DocumentSigner ds = DocumentSigner.builder()
+                            .document(doc)
+                            .signerEmail(r.getEmail())
+                            .signerName(r.getName())
+                            .role("signer")
+                            .build();
+                    emailToSigner.put(key, ds);
+                    signersToSave.add(ds);
+                }
+            }
+            List<DocumentSigner> savedSigners = documentSignerRepository.saveAll(signersToSave);
+            Map<String, DocumentSigner> savedMap = new HashMap<>();
+            for (DocumentSigner ds : savedSigners)
+                savedMap.put(ds.getSignerEmail().toLowerCase(), ds);
+
+            // Build SignatureField records
+            List<SignatureField> sigFields = new ArrayList<>();
+            for (Object[] e : entries) {
+                SignerDto r = (SignerDto) e[0];
+                FieldRequest f = (FieldRequest) e[1];
+                if (r.getEmail() == null) continue;
+                DocumentSigner ds = savedMap.get(r.getEmail().toLowerCase());
+                sigFields.add(SignatureField.builder()
+                        .document(doc)
+                        .docSigner(ds)
+                        .pageNumber(f.getPage())
+                        .posX(f.getX())
+                        .posY(f.getY())
+                        .width(f.getWidth() != null ? f.getWidth() : 20f)
+                        .height(f.getHeight() != null ? f.getHeight() : 10f)
+                        .fieldType(mapFieldType(f.getType()))
+                        .build());
+            }
+            if (!sigFields.isEmpty()) signatureFieldRepository.saveAll(sigFields);
         }
 
         return documentGroup.getGroupId();
@@ -201,103 +312,14 @@ public class DocumentService {
         return DocumentGroup.builder().groupName(groupName).build();
     }
 
-    // ─── Save Recipients ────────────────────────────────────────────────
-
-    private List<DocumentSigner> saveRecipients(Document document, List<RecipientRequest> recipientRequests) {
-        // Clear existing recipients for draft
-        documentSignerRepository.deleteByDocument_DocumentId(document.getDocumentId());
-
-        List<DocumentSigner> signers = new ArrayList<>();
-        if (recipientRequests == null) return signers;
-
-        for (RecipientRequest recipient : recipientRequests) {
-            DocumentSigner signer = DocumentSigner.builder()
-                    .document(document)
-                    .signerEmail(recipient.getEmail())
-                    .signerName(recipient.getName())
-                    .role("signer") // default
-                    .build();
-            signers.add(signer);
-        }
-
-        if (!signers.isEmpty()) {
-            return documentSignerRepository.saveAll(signers);
-        }
-        return signers;
-    }
-
-    // ─── Save Signature Fields ──────────────────────────────────────────
-
-    private void saveSignatureFields(
-            Document document,
-            List<FieldRequest> fields,
-            List<RecipientRequest> recipients,
-            List<DocumentSigner> savedSigners) {
-        // Clear existing fields first
-        signatureFieldRepository.deleteByDocument_DocumentId(document.getDocumentId());
-
-        if (fields == null) return;
-
-        // Map React tempId -> Email (from Request)
-        Map<String, String> tempIdToEmail = new HashMap<>();
-        if (recipients != null) {
-            for (RecipientRequest r : recipients) {
-                tempIdToEmail.put(r.getId().toString(), r.getEmail());
-            }
-        }
-
-        // Map Email -> DocumentSigner Entity (from previously batched inserts)
-        Map<String, DocumentSigner> emailToSigner = new HashMap<>();
-        if (savedSigners != null) {
-            for (DocumentSigner ds : savedSigners) {
-                emailToSigner.put(ds.getSignerEmail(), ds);
-            }
-        }
-
-        List<SignatureField> sigFields = new ArrayList<>();
-
-        for (FieldRequest field : fields) {
-
-            FieldType fieldType = mapFieldType(field.getType());
-            DocumentSigner signer = null;
-
-            if (field.getRecipientId() != null) {
-                String email = tempIdToEmail.get(field.getRecipientId().toString());
-                if (email != null) {
-                    signer = emailToSigner.get(email);
-                }
-            }
-
-            SignatureField sigField = SignatureField.builder()
-                    .document(document)
-                    .pageNumber(field.getPage())
-                    .posX(field.getX())
-                    .posY(field.getY())
-                    .width(field.getWidth() != null ? field.getWidth() : 20f)
-                    .height(field.getHeight() != null ? field.getHeight() : 10f)
-                    .fieldType(fieldType)
-                    .docSigner(signer)
-                    .build();
-
-            sigFields.add(sigField);
-        }
-
-        if (!sigFields.isEmpty()) {
-            signatureFieldRepository.saveAll(sigFields);
-        }
-    }
-
     private FieldType mapFieldType(String type) {
-        switch (type.toLowerCase()) {
-            case "signature":
-            case "initial":
-                return FieldType.SIGNATURE;
-            case "checkbox":
-                return FieldType.CHECKBOX;
-            case "date":
-                return FieldType.DATE;
-            default:
-                return FieldType.TEXT;
+        if (type == null || type.trim().isEmpty()) {
+            return FieldType.SIGNATURE;
+        }
+        try {
+            return FieldType.valueOf(type.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return FieldType.TEXT; // Fallback for unknown types
         }
     }
 
@@ -348,7 +370,8 @@ public class DocumentService {
     }
 
     /**
-     * Return structured detail for a document group: documents, recipients, and fields.
+     * Return structured detail for a document group: documents, recipients, and
+     * fields.
      * Replaces the old approach of parsing JSON from the description column.
      */
     public GroupDetailResponse getGroupDetail(Integer groupId) {
@@ -358,59 +381,54 @@ public class DocumentService {
         }
 
         List<Document> documents = documentRepository.findByDocumentGroup_GroupId(groupId);
-        List<DocumentResponse> docResponses =
-                documents.stream().map(this::toDocumentResponse).toList();
 
-        // Build recipients + fields from the first document (all docs share the same signers/fields structure)
-        List<RecipientResponse> recipientResponses = new ArrayList<>();
-        List<FieldResponse> fieldResponses = new ArrayList<>();
+        // Build per-document detail (each doc has its own signers + fields)
+        List<DocumentDetailResponse> docDetailResponses = new ArrayList<>();
 
-        if (!documents.isEmpty()) {
-            Document primaryDoc = documents.get(0);
-            List<DocumentSigner> signers =
-                    documentSignerRepository.findByDocument_DocumentId(primaryDoc.getDocumentId());
+        for (int docIdx = 0; docIdx < documents.size(); docIdx++) {
+            Document doc = documents.get(docIdx);
+            final int fileIdx = docIdx;
 
-            // Build email -> signerId map for field mapping
-            Map<Integer, Integer> signerIdMap = new HashMap<>(); // docSignerId -> index in recipientResponses
+            // Signers for this document
+            List<DocumentSigner> docSigners = documentSignerRepository.findByDocument_DocumentId(doc.getDocumentId());
+            List<RecipientResponse> docRecipients = docSigners.stream()
+                    .map(ds -> RecipientResponse.builder()
+                            .signerId(ds.getDocSignerId())
+                            .email(ds.getSignerEmail())
+                            .name(ds.getSignerName())
+                            .role(ds.getRole())
+                            .build())
+                    .toList();
 
-            for (int i = 0; i < signers.size(); i++) {
-                DocumentSigner ds = signers.get(i);
-                recipientResponses.add(RecipientResponse.builder()
-                        .signerId(ds.getDocSignerId())
-                        .email(ds.getSignerEmail())
-                        .name(ds.getSignerName())
-                        .role(ds.getRole())
-                        .build());
-                signerIdMap.put(ds.getDocSignerId(), i);
-            }
-
-            // Build fields from ALL documents, with fileIndex
-            for (int docIdx = 0; docIdx < documents.size(); docIdx++) {
-                Document doc = documents.get(docIdx);
-                List<SignatureField> fields = signatureFieldRepository.findByDocument_DocumentId(doc.getDocumentId());
-
-                for (SignatureField sf : fields) {
-                    Integer recipientId = null;
-                    if (sf.getDocSigner() != null) {
-                        recipientId = sf.getDocSigner().getDocSignerId();
-                    }
-
-                    fieldResponses.add(FieldResponse.builder()
+            // Fields for this document
+            List<SignatureField> docFields = signatureFieldRepository.findByDocument_DocumentId(doc.getDocumentId());
+            List<FieldResponse> docFieldResponses = docFields.stream()
+                    .map(sf -> FieldResponse.builder()
                             .fieldId(sf.getFieldId())
                             .type(
                                     sf.getFieldType() != null
                                             ? sf.getFieldType().name().toLowerCase()
                                             : "signature")
                             .page(sf.getPageNumber())
-                            .fileIndex(docIdx)
+                            .fileIndex(fileIdx)
                             .x(sf.getPosX())
                             .y(sf.getPosY())
                             .width(sf.getWidth())
                             .height(sf.getHeight())
-                            .recipientId(recipientId)
-                            .build());
-                }
-            }
+                            .recipientId(
+                                    sf.getDocSigner() != null
+                                            ? sf.getDocSigner().getDocSignerId()
+                                            : null)
+                            .build())
+                    .toList();
+
+            docDetailResponses.add(DocumentDetailResponse.builder()
+                    .documentId(doc.getDocumentId())
+                    .originalFileUrl(doc.getOriginalFileUrl())
+                    .status(doc.getStatus() != null ? doc.getStatus().name() : "DRAFT")
+                    .recipients(docRecipients)
+                    .fields(docFieldResponses)
+                    .build());
         }
 
         return GroupDetailResponse.builder()
@@ -418,9 +436,7 @@ public class DocumentService {
                 .groupName(group.getGroupName())
                 .currentStep(group.getCurrentStep())
                 .groupStatus(group.getGr_status())
-                .documents(docResponses)
-                .recipients(recipientResponses)
-                .fields(fieldResponses)
+                .documents(docDetailResponses)
                 .build();
     }
 

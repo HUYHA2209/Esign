@@ -8,6 +8,7 @@ import { toast } from 'react-toastify';
 
 // Services & API
 import { sendDocumentFlow } from './services/sendHandlers';
+import { validateBeforeSend } from './services/validators';
 import { deleteDocument, sendDocument } from '../../service/documentApi';
 import { searchUsersByEmail } from '../../service/userApi';
 
@@ -84,8 +85,8 @@ const DocumentEditor = () => {
         setUploadedFiles,
     });
 
-    // ─── Hook: Auto-Save Debounced ───
-    const { saveWithFiles, saveNow } = useAutoSaveDraft({
+    // ─── Hook: Event-Based Save ───
+    const { saveWithFiles, saveNow, confirmAndSave } = useAutoSaveDraft({
         id,
         documentName,
         recipients,
@@ -108,6 +109,14 @@ const DocumentEditor = () => {
         window.addEventListener('pointermove', onPointerMove);
         return () => window.removeEventListener('pointermove', onPointerMove);
     }, []);
+
+    // Sync selectedRecipient khi danh sách recipients thay đổi
+    useEffect(() => {
+        const validRecipients = recipients.filter(r => r.email && r.email.trim() !== '');
+        if (validRecipients.length > 0 && !validRecipients.some(r => r.id === selectedRecipient)) {
+            setSelectedRecipient(validRecipients[0].id);
+        }
+    }, [recipients]);
 
     // Step animation
     useEffect(() => {
@@ -184,6 +193,7 @@ const DocumentEditor = () => {
 
         const file = uploadedFiles[fileIndex];
         const fileId = file?.id;
+        const documentId = file?.serverDocumentId ?? null;
 
         if (isSidebarItem) {
             const newField = {
@@ -192,6 +202,7 @@ const DocumentEditor = () => {
                 page: pageNumber,
                 fileIndex,
                 fileId,
+                documentId,
                 x: clampedX,
                 y: clampedY,
                 width: fieldWidth,
@@ -204,7 +215,7 @@ const DocumentEditor = () => {
             setFields(prev =>
                 prev.map(f =>
                     f.id === fieldId
-                        ? { ...f, page: pageNumber, fileIndex, fileId, x: clampedX, y: clampedY }
+                        ? { ...f, page: pageNumber, fileIndex, fileId, documentId, x: clampedX, y: clampedY }
                         : f
                 )
             );
@@ -268,18 +279,40 @@ const DocumentEditor = () => {
 
     const removeFile = async (fileId) => {
         const fileToDelete = uploadedFiles.find(f => f.id === fileId);
-        if (fileToDelete && fileToDelete.isExisting && fileToDelete.serverDocumentId) {
-            if (window.confirm('Bạn có chắc chắn muốn xóa tài liệu này? Hành động này không thể hoàn tác.')) {
-                try {
-                    await deleteDocument(fileToDelete.serverDocumentId);
-                    setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
-                } catch (error) {
-                    console.error("Failed to delete document:", error);
-                    alert("Không thể xóa tài liệu. Vui lòng thử lại.");
-                }
+        if (!fileToDelete) return;
+
+        // Helper: remove fields belonging to this file from state
+        const cleanupFields = () => {
+            setFields(prev => prev.filter(f =>
+                f.fileId !== fileId &&
+                f.documentId !== fileToDelete.serverDocumentId
+            ));
+        };
+
+        if (fileToDelete.isExisting && fileToDelete.serverDocumentId) {
+            // File is already saved in DB — ask before permanently deleting
+            if (!window.confirm('Bạn có chắc chắn muốn xóa tài liệu này? Hành động này không thể hoàn tác.')) {
+                return;
+            }
+            try {
+                await deleteDocument(fileToDelete.serverDocumentId);
+                setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+                cleanupFields();
+                // Adjust currentFileIndex if needed
+                setCurrentFileIndex(prev =>
+                    prev >= uploadedFiles.length - 1 ? Math.max(0, prev - 1) : prev
+                );
+            } catch (error) {
+                console.error('Failed to delete document:', error);
+                toast.error('Không thể xóa tài liệu. Vui lòng thử lại.');
             }
         } else {
+            // Local-only file (not yet saved to server) — remove from state only
             setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+            cleanupFields();
+            setCurrentFileIndex(prev =>
+                prev >= uploadedFiles.length - 1 ? Math.max(0, prev - 1) : prev
+            );
         }
     };
 
@@ -354,7 +387,11 @@ const DocumentEditor = () => {
     const hasAtLeastOneRecipientEmail = recipientsWithEmail.length > 0;
     const isStep1Complete = hasAtLeastOnePdf && hasAtLeastOneRecipientEmail;
 
-    const recipientsMissingFields = recipientsWithEmail.filter(r => !fields.some(f => String(f.recipientId) === String(r.id)));
+    const fieldRecipientIds = new Set(fields.map(f => String(f.recipientId)));
+
+    const recipientsMissingFields = recipientsWithEmail.filter(
+        r => !fieldRecipientIds.has(String(r.id))
+    );
     const isStep2Complete = recipientsWithEmail.length > 0 && recipientsMissingFields.length === 0;
     const canProceed = isStep1Complete;
 
@@ -365,10 +402,9 @@ const DocumentEditor = () => {
         return false;
     }, [isStep1Complete, isStep2Complete]);
 
-    const goToStep = useCallback(async (targetStep) => {
+    const goToStep = useCallback((targetStep) => {
         if (targetStep === currentStep) return;
         if (canGoToStep(targetStep)) {
-            await saveNow(); // ✅ Flush save trước khi chuyển bước
             setCurrentStep(targetStep);
             return;
         }
@@ -391,14 +427,14 @@ const DocumentEditor = () => {
                 return;
             }
         }
-    }, [canGoToStep, currentStep, isStep1Complete, isStep2Complete, recipientsMissingFields]);
+    }, [canGoToStep, currentStep, isStep1Complete, isStep2Complete, recipientsMissingFields, saveNow]);
 
     // ═══════════════════════════════════════════
     // Send & Navigation
     // ═══════════════════════════════════════════
 
     const handleBackNavigation = async () => {
-        await saveNow(); // ✅ Flush save trước khi rời trang
+        await confirmAndSave();  // Hỏi confirm nếu có unsaved changes
         navigate('/documents');
     };
 
@@ -428,12 +464,15 @@ const DocumentEditor = () => {
                 toast.error(`Vui lòng nhập tên cho người nhận: ${r.email}`);
                 return;
             }
-            const assignedFields = fields.filter(f => String(f.recipientId) === String(r.id));
-            if ((r.role === 'signer' || !r.role) && assignedFields.length === 0) {
-                toast.error(`Người nhận ${r.email} chưa có trường ký. Vui lòng gán ít nhất 1 trường.`);
-                return;
-            }
         }
+
+        // Validate chữ ký: mỗi người nhận + mỗi file phải có ít nhất 1 trường SIGNATURE
+        const validation = validateBeforeSend(recipients, fields, uploadedFiles);
+        if (!validation.valid) {
+            validation.errors.forEach(err => toast.error(err));
+            return;
+        }
+
         await sendDocumentFlow({
             id, uploadedFiles, documentName, recipients, enableSigningOrder, fields, signatureFontSize,
             sendDocument, toast, navigate, setIsSending

@@ -47,18 +47,6 @@ export async function sendDocumentFlow({
 }) {
     setIsSending(true);
     try {
-        try {
-            await performSaveDraft(uploadedFiles, {
-                documentId: id ? parseInt(id) : null,
-                documentName,
-                recipients,
-                currentStep: 2,
-                fields
-            });
-        } catch (e) {
-            // continue even if draft save fails
-            console.error('Saving draft failed before send:', e);
-        }
 
         // Build explicit payload with helper for clarity and easier backend mapping
         const payload = buildSendPayload({

@@ -11,17 +11,20 @@ export function useAutoSaveDraft({
     navigate,
     isLoading,
 }) {
-    const debounceTimer = useRef(null);
     const isSaving = useRef(false);
+    const hasUnsavedChanges = useRef(false);
     const hasMounted = useRef(false);
-    const lastSavedData = useRef(null);
     const draftJustLoaded = useRef(false);
 
     // ─── Ref luôn có giá trị mới nhất ───
     const stateRef = useRef({});
     stateRef.current = { id, documentName, recipients, currentStep, fields, uploadedFiles, navigate };
 
-    // ─── Helper: Build FormData & gọi API ───
+    // ─── Helper: Strip recipients (remove UI-only fields) ───
+    const stripRecipients = (recipients) =>
+        recipients.map(({ id, email, name, role }) => ({ id, email, name, role }));
+
+    // ─── Core: Build FormData & gọi API ───
     const buildAndSave = useCallback(async (extraFiles = [], overrideName = null) => {
         const { id, documentName, recipients, currentStep, fields, uploadedFiles, navigate } = stateRef.current;
         const finalDocName = overrideName !== null ? overrideName : documentName;
@@ -29,10 +32,15 @@ export function useAutoSaveDraft({
         if (uploadedFiles.length === 0 && extraFiles.length === 0) return null;
         if (isSaving.current) return null;
 
+        // Skip if no changes (unless uploading new files)
+        if (extraFiles.length === 0 && !hasUnsavedChanges.current) {
+            return null;
+        }
+
         const payloadMeta = {
             groupId: id ? parseInt(id) : null,
             documentName: finalDocName,
-            recipients,
+            recipients: stripRecipients(recipients),
             currentStep,
             totalFiles: uploadedFiles.length + extraFiles.length,
             fields,
@@ -41,11 +49,6 @@ export function useAutoSaveDraft({
                 .map(f => ({ id: f.id, name: f.name, size: f.size }))
         };
 
-        const dataKey = JSON.stringify(payloadMeta);
-        if (extraFiles.length === 0 && lastSavedData.current === dataKey) {
-            return null;
-        }
-
         isSaving.current = true;
         try {
             const formData = new FormData();
@@ -53,45 +56,52 @@ export function useAutoSaveDraft({
             formData.append('data', JSON.stringify(payloadMeta));
 
             const newId = await saveDraft(formData);
-            lastSavedData.current = dataKey;
+            hasUnsavedChanges.current = false;
 
             if (newId && String(newId) !== String(id)) {
                 navigate(`/document-editor/${newId}`, { replace: true });
             }
             return newId;
         } catch (error) {
-            console.error("Auto save draft failed:", error);
+            console.error("Save draft failed:", error);
             return null;
         } finally {
             isSaving.current = false;
         }
     }, []);
 
-    // ─── Save ngay khi upload file ───
+    // ─── Trigger 1: Save ngay khi upload file ───
     const saveWithFiles = useCallback(async (newFiles, overrideName = null) => {
-        if (debounceTimer.current) {
-            clearTimeout(debounceTimer.current);
-            debounceTimer.current = null;
-        }
+        hasUnsavedChanges.current = true;
         return await buildAndSave(newFiles, overrideName);
     }, [buildAndSave]);
 
-    // ─── Flush save ngay lập tức ───
+    // ─── Trigger 2: Save thủ công (flush) ───
     const saveNow = useCallback(async () => {
-        if (debounceTimer.current) {
-            clearTimeout(debounceTimer.current);
-            debounceTimer.current = null;
-        }
         return await buildAndSave([]);
     }, [buildAndSave]);
 
-    // ─── Khi load xong → bật cờ draftJustLoaded ───
+    // ─── Confirm + Save helper (dùng cho navigate away) ───
+    const confirmAndSave = useCallback(async () => {
+        if (!hasUnsavedChanges.current) return true; // no changes, proceed
+
+        const shouldSave = window.confirm(
+            'Bạn có thay đổi chưa lưu. Bạn có muốn lưu bản nháp trước khi rời trang không?\n\n• OK = Lưu rồi rời\n• Cancel = Rời mà không lưu'
+        );
+
+        if (shouldSave) {
+            await buildAndSave([]);
+        } else {
+            hasUnsavedChanges.current = false;
+        }
+        return true; // always proceed after confirm
+    }, [buildAndSave]);
+
+    // ─── Track changes: đánh dấu có thay đổi khi state thay đổi ───
     const prevIsLoading = useRef(isLoading);
     useEffect(() => {
         if (prevIsLoading.current === true && isLoading === false) {
-            // Load vừa hoàn tất → đánh dấu để skip tất cả thay đổi tiếp theo
             draftJustLoaded.current = true;
-            // Tắt cờ sau 3 giây — đủ thời gian cho mọi state re-render ổn định
             setTimeout(() => {
                 draftJustLoaded.current = false;
             }, 3000);
@@ -99,7 +109,6 @@ export function useAutoSaveDraft({
         prevIsLoading.current = isLoading;
     }, [isLoading]);
 
-    // ─── Debounce 2s khi metadata thay đổi ───
     useEffect(() => {
         if (!hasMounted.current) {
             hasMounted.current = true;
@@ -107,39 +116,40 @@ export function useAutoSaveDraft({
         }
         if (isLoading) return;
         if (stateRef.current.uploadedFiles.length === 0) return;
-
-        // Bỏ qua mọi thay đổi ngay sau khi load draft
         if (draftJustLoaded.current) return;
 
-        if (debounceTimer.current) clearTimeout(debounceTimer.current);
+        hasUnsavedChanges.current = true;
+    }, [recipients, fields, documentName, currentStep, isLoading]);
 
-        debounceTimer.current = setTimeout(() => {
-            buildAndSave([]);
-        }, 2000);
-
-        return () => {
-            if (debounceTimer.current) clearTimeout(debounceTimer.current);
-        };
-    }, [recipients, fields, documentName, currentStep, isLoading, buildAndSave]);
-
-    // ─── Save khi rời trang ───
+    // ─── Trigger 3: Đóng tab / cửa sổ → hỏi người dùng ───
     useEffect(() => {
-        const handleBeforeUnload = () => {
-            if (debounceTimer.current) {
-                clearTimeout(debounceTimer.current);
-                buildAndSave([]);
+        const handleBeforeUnload = (e) => {
+            if (hasUnsavedChanges.current) {
+                e.preventDefault();
+                e.returnValue = '';
             }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [buildAndSave]);
-
-    // ─── Cleanup khi unmount ───
-    useEffect(() => {
-        return () => {
-            if (debounceTimer.current) clearTimeout(debounceTimer.current);
-        };
     }, []);
 
-    return { saveWithFiles, saveNow, isSaving: isSaving.current };
+    // ─── Trigger 4: Browser back button → hỏi + lưu ───
+    useEffect(() => {
+        const handlePopState = async () => {
+            if (hasUnsavedChanges.current) {
+                const shouldSave = window.confirm(
+                    'Bạn có thay đổi chưa lưu. Bạn có muốn lưu bản nháp không?'
+                );
+                if (shouldSave) {
+                    await buildAndSave([]);
+                } else {
+                    hasUnsavedChanges.current = false;
+                }
+            }
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [buildAndSave]);
+
+    return { saveWithFiles, saveNow, confirmAndSave, isSaving: isSaving.current, hasUnsavedChanges };
 }

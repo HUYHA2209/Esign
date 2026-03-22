@@ -23,6 +23,7 @@ public class FieldRequest {
 
     Integer fileIndex;
     String fileId;
+    Integer documentId; // Real DB primary key - preferred for file→document mapping
 
     Float x;
     Float y;

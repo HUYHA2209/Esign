@@ -12,7 +12,8 @@ import com.spring.esign.entity.Document;
 public interface DocumentRepository extends JpaRepository<Document, Integer> {
     List<Document> findByAccount_AccountId(Long accountId);
 
-    List<Document> findByDocumentGroup_GroupId(Integer groupId);
+    @Query("SELECT d FROM Document d WHERE d.documentGroup.groupId = :groupId ORDER BY d.documentId ASC")
+    List<Document> findByDocumentGroup_GroupId(@Param("groupId") Integer groupId);
 
     @Query(
             "SELECT d FROM Document d LEFT JOIN FETCH d.documentGroup JOIN FETCH d.uploadedBy WHERE d.account.accountId = :accountId")

@@ -21,5 +21,5 @@ public class SaveDraftDocumentRequest {
     Integer totalFiles;
     List<FieldRequest> fields;
     List<ExistingFileRequest> existingFiles;
-    List<RecipientRequest> recipients;
+    List<SignerDto> recipients;
 }

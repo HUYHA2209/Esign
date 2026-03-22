@@ -13,10 +13,10 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class GroupDetailResponse {
-    Integer groupId;
-    String groupName;
-    Integer currentStep;
-    String groupStatus;
-    List<DocumentDetailResponse> documents;
+public class DocumentDetailResponse {
+    Integer documentId;
+    String originalFileUrl;
+    String status;
+    List<RecipientResponse> recipients;
+    List<FieldResponse> fields;
 }

@@ -2,6 +2,34 @@ import React from 'react';
 import { useDraggable, useDroppable, PointerSensor } from '@dnd-kit/core';
 import { X } from 'lucide-react';
 
+// ─── Recipient Color Palette ───
+const RECIPIENT_COLORS = [
+    { border: 'border-blue-500',   text: 'text-blue-600',   bg: 'bg-blue-50',   ring: 'ring-blue-300',   dot: 'bg-blue-500' },
+    { border: 'border-emerald-500', text: 'text-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-300', dot: 'bg-emerald-500' },
+    { border: 'border-amber-500',  text: 'text-amber-600',  bg: 'bg-amber-50',  ring: 'ring-amber-300',  dot: 'bg-amber-500' },
+    { border: 'border-purple-500', text: 'text-purple-600', bg: 'bg-purple-50', ring: 'ring-purple-300', dot: 'bg-purple-500' },
+    { border: 'border-rose-500',   text: 'text-rose-600',   bg: 'bg-rose-50',   ring: 'ring-rose-300',   dot: 'bg-rose-500' },
+    { border: 'border-cyan-500',   text: 'text-cyan-600',   bg: 'bg-cyan-50',   ring: 'ring-cyan-300',   dot: 'bg-cyan-500' },
+    { border: 'border-orange-500', text: 'text-orange-600', bg: 'bg-orange-50', ring: 'ring-orange-300', dot: 'bg-orange-500' },
+    { border: 'border-indigo-500', text: 'text-indigo-600', bg: 'bg-indigo-50', ring: 'ring-indigo-300', dot: 'bg-indigo-500' },
+];
+
+export function getRecipientColor(recipientId, recipients) {
+    if (!recipientId || !recipients) return null;
+    const idx = recipients.findIndex(r => r.id === recipientId);
+    if (idx === -1) return null;
+    return RECIPIENT_COLORS[idx % RECIPIENT_COLORS.length];
+}
+
+// Default (unassigned) color
+const UNASSIGNED_COLOR = {
+    border: 'border-slate-300',
+    text: 'text-slate-400',
+    bg: 'bg-white',
+    ring: 'ring-slate-200',
+    dot: 'bg-slate-300',
+};
+
 // ─── Draggable Sidebar Item ───
 export const DraggableSidebarItem = ({ type, icon: Icon, label, color }) => {
     const { attributes, listeners, setNodeRef } = useDraggable({
@@ -32,7 +60,7 @@ export const PDFPageDroppable = ({ pageNumber, fileIndex, children }) => {
 };
 
 // ─── Draggable Field on Page ───
-export const DraggableFieldOnPage = ({ id, field, updateFieldSize, removeField, fieldTypes }) => {
+export const DraggableFieldOnPage = ({ id, field, updateFieldSize, removeField, fieldTypes, recipients }) => {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: id,
         data: { id, ...field }
@@ -55,6 +83,9 @@ export const DraggableFieldOnPage = ({ id, field, updateFieldSize, removeField, 
 
     const fieldTypeInfo = fieldTypes.find(t => t.type === field.type) || fieldTypes[0];
     const Icon = fieldTypeInfo.icon;
+
+    // Determine color based on assigned recipient
+    const recipientColor = getRecipientColor(field.recipientId, recipients) || UNASSIGNED_COLOR;
 
     const handleResizePointerDown = (e) => {
         e.preventDefault();
@@ -89,13 +120,15 @@ export const DraggableFieldOnPage = ({ id, field, updateFieldSize, removeField, 
             style={style}
             {...listeners}
             {...attributes}
-            className={`absolute z-10 p-2 rounded border shadow-sm cursor-move flex items-center gap-2 ${fieldTypeInfo.color} bg-opacity-90 overflow-hidden`}
+            className={`absolute z-10 p-2 rounded border-2 shadow-sm cursor-move flex items-center gap-2 bg-white ${recipientColor.border} overflow-hidden transition-colors duration-200`}
         >
-            <Icon className="w-4 h-4 flex-shrink-0" />
-            <span className="text-xs font-bold truncate flex-1">{fieldTypeInfo.label} {field.recipientIndex ? `#${field.recipientIndex}` : ''}</span>
+            <Icon className={`w-4 h-4 flex-shrink-0 ${recipientColor.text}`} />
+            <span className={`text-xs font-bold truncate flex-1 ${recipientColor.text}`}>
+                {fieldTypeInfo.label}
+            </span>
             <button
                 onPointerDown={(e) => { e.stopPropagation(); removeField(id); }}
-                className="ml-1 p-0.5 hover:bg-red-200 rounded text-red-600 flex-shrink-0"
+                className="ml-1 p-0.5 hover:bg-red-100 rounded text-red-500 flex-shrink-0"
             >
                 <X className="w-3 h-3" />
             </button>
@@ -103,10 +136,10 @@ export const DraggableFieldOnPage = ({ id, field, updateFieldSize, removeField, 
             <div
                 data-no-dnd="true"
                 onPointerDown={handleResizePointerDown}
-                className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize z-20 flex items-center justify-center"
+                className={`absolute bottom-0 right-0 w-3 h-3 cursor-se-resize z-20 flex items-center justify-center ${recipientColor.text}`}
                 title="Kéo để thay đổi kích thước"
             >
-                <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" className="text-current opacity-50">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" className="opacity-50">
                     <path d="M0 8 L8 0 L8 8 Z" />
                 </svg>
             </div>

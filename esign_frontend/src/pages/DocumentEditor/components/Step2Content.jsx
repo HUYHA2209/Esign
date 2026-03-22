@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, pointerWithin } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { Document, Page } from 'react-pdf';
 import { ChevronDown } from 'lucide-react';
-import { DraggableSidebarItem, PDFPageDroppable, DraggableFieldOnPage } from './DndComponents';
+import { DraggableSidebarItem, PDFPageDroppable, DraggableFieldOnPage, getRecipientColor } from './DndComponents';
 
 const Step2Content = ({
     sensors,
@@ -27,6 +27,8 @@ const Step2Content = ({
     goToStep,
     isStepAnimating,
 }) => {
+    const recipientsWithEmail = recipients.filter(r => r.email);
+
     return (
         <DndContext sensors={sensors}
             onDragStart={handleDragStart}
@@ -63,6 +65,7 @@ const Step2Content = ({
                                                         fieldTypes={fieldTypes}
                                                         removeField={removeField}
                                                         updateFieldSize={updateFieldSize}
+                                                        recipients={recipientsWithEmail}
                                                     />
                                                 ))}
                                             </div>
@@ -97,23 +100,29 @@ const Step2Content = ({
 
                     <hr className="my-4" />
 
-                    {/* Selected Recipient */}
+                    {/* Selected Recipient — dropdown with colored dot */}
                     <div className="mb-6">
                         <h3 className="text-sm font-semibold text-slate-900 mb-3">Người nhận</h3>
-                        <div className="relative">
-                            <select
-                                value={selectedRecipient}
-                                onChange={(e) => setSelectedRecipient(Number(e.target.value))}
-                                className="w-full px-4 py-3 pr-10 border-2 border-indigo-200 rounded-lg text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none bg-white"
-                            >
-                                {recipients.filter(r => r.email).map((r, idx) => (
-                                    <option key={r.id} value={r.id}>
-                                        {r.name || `Người nhận ${idx + 1}`}
-                                    </option>
-                                ))}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
-                        </div>
+                        {(() => {
+                            const selColor = getRecipientColor(selectedRecipient, recipientsWithEmail);
+                            return (
+                                <div className={`relative flex items-center border-2 rounded-lg transition-colors ${selColor?.border || 'border-slate-200'}`}>
+                                    <span className={`absolute left-3 w-3 h-3 rounded-full flex-shrink-0 ${selColor?.dot || 'bg-slate-300'}`}></span>
+                                    <select
+                                        value={selectedRecipient}
+                                        onChange={(e) => setSelectedRecipient(Number(e.target.value))}
+                                        className="w-full pl-9 pr-10 py-3 text-sm font-medium text-slate-700 focus:outline-none appearance-none bg-transparent"
+                                    >
+                                        {recipientsWithEmail.map((r, idx) => (
+                                            <option key={r.id} value={r.id}>
+                                                {r.name || `Người nhận ${idx + 1}`} ({r.email})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 w-5 h-5 text-slate-400 pointer-events-none" />
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     <hr className="my-4" />
@@ -150,20 +159,26 @@ const Step2Content = ({
 
                 <DragOverlay modifiers={activeDragItem?.isSidebar ? [snapCenterToCursor] : []}>
                     {activeDragItem ? (() => {
+                        const fieldTypeInfo = fieldTypes.find(t => t.type === activeDragItem.type) || fieldTypes[0];
+                        const Icon = fieldTypeInfo.icon;
+                        // Get recipient color for drag overlay
+                        const dragColor = activeDragItem.isSidebar
+                            ? getRecipientColor(selectedRecipient, recipientsWithEmail)
+                            : getRecipientColor(activeDragItem.recipientId, recipientsWithEmail);
+
                         if (activeDragItem.isSidebar) {
                             return (
-                                <div className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 bg-white shadow-xl scale-105 opacity-80 cursor-grabbing">
-                                    <span className="text-xs font-medium">{activeDragItem.label}</span>
+                                <div className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 bg-white shadow-xl scale-105 opacity-90 cursor-grabbing ${dragColor?.border || 'border-slate-300'}`}>
+                                    <Icon className={`w-4 h-4 ${dragColor?.text || 'text-slate-400'}`} />
+                                    <span className={`text-xs font-medium ${dragColor?.text || 'text-slate-400'}`}>{activeDragItem.label}</span>
                                 </div>
                             );
                         } else {
-                            const fieldTypeInfo = fieldTypes.find(t => t.type === activeDragItem.type) || fieldTypes[0];
-                            const Icon = fieldTypeInfo.icon;
                             return (
-                                <div className={`p-2 rounded border shadow-lg cursor-grabbing flex items-center gap-2 ${fieldTypeInfo.color} opacity-90 scale-105`}>
-                                    <Icon className="w-4 h-4" />
-                                    <span className="text-xs font-bold whitespace-nowrap">
-                                        {fieldTypeInfo.label} {activeDragItem.recipientIndex ? `#${activeDragItem.recipientIndex}` : ''}
+                                <div className={`p-2 rounded border-2 shadow-lg cursor-grabbing flex items-center gap-2 bg-white ${dragColor?.border || 'border-slate-300'} opacity-90 scale-105`}>
+                                    <Icon className={`w-4 h-4 ${dragColor?.text || 'text-slate-400'}`} />
+                                    <span className={`text-xs font-bold whitespace-nowrap ${dragColor?.text || 'text-slate-500'}`}>
+                                        {fieldTypeInfo.label}
                                     </span>
                                 </div>
                             );
