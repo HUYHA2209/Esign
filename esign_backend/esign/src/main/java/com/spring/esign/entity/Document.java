@@ -58,6 +58,17 @@ public class Document {
     @Column(name = "updated_at")
     LocalDateTime updatedAt;
 
+    @Column(name = "complete_at")
+    LocalDateTime completeAt;
+
+    @Column(name = "cancelled_at")
+    LocalDateTime cancelledAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cancelled_by")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password", "forgotPassword"})
+    User cancelledBy;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id")
     @JsonIgnoreProperties({"documents"})

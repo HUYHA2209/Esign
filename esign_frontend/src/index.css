@@ -1,3 +1,44 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased text-secondary-900 bg-secondary-50 font-sans;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white bg-opacity-20 backdrop-filter backdrop-blur-lg border border-white border-opacity-30 rounded-2xl shadow-glass;
+  }
+  
+  .glass-nav {
+    @apply bg-white bg-opacity-70 backdrop-filter backdrop-blur-md border-b border-white border-opacity-20;
+  }
+
+  .premium-gradient {
+    @apply bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700;
+  }
+
+  .soft-gradient {
+    @apply bg-gradient-to-tr from-secondary-50 to-white;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-secondary-300 rounded-full hover:bg-secondary-400 transition-colors;
+}

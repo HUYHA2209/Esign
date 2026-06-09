@@ -10,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class SignatureResponse {
     Long signatureId;
-    String imageBase64;
+    String imageUrl;
     String signatureType;
     String textStyle;
 }

@@ -22,8 +22,12 @@ import com.spring.esign.exception.ErrorCode;
 import com.spring.esign.repository.UserRepository;
 import com.spring.esign.repository.UsersKeysRepository;
 import com.webauthn4j.WebAuthnManager;
+import com.webauthn4j.authenticator.AuthenticatorImpl;
 import com.webauthn4j.converter.util.ObjectConverter;
 import com.webauthn4j.data.*;
+import com.webauthn4j.data.attestation.authenticator.AAGUID;
+import com.webauthn4j.data.attestation.authenticator.AttestedCredentialData;
+import com.webauthn4j.data.attestation.authenticator.COSEKey;
 import com.webauthn4j.data.attestation.statement.COSEAlgorithmIdentifier;
 import com.webauthn4j.data.client.Origin;
 import com.webauthn4j.data.client.challenge.Challenge;
@@ -45,8 +49,21 @@ public class WebAuthnService {
     UsersKeysRepository usersKeysRepository;
     WebAuthnManager webAuthnManager;
     ObjectMapper objectMapper;
+    WebAuthnParser webAuthnParser;
 
     ConcurrentHashMap<String, Challenge> challengeStore = new ConcurrentHashMap<>();
+
+    public Boolean getPasskeyStatus() {
+        org.springframework.security.core.Authentication authentication =
+                org.springframework.security.core.context.SecurityContextHolder.getContext()
+                        .getAuthentication();
+        String userId = authentication.getName();
+        User user = userRepository
+                .findById(userId)
+                .orElseThrow(() -> new com.spring.esign.exception.AppException(
+                        com.spring.esign.exception.ErrorCode.USER_NOT_EXISTED));
+        return !usersKeysRepository.findByUserAndIsActiveTrue(user).isEmpty();
+    }
 
     // User Configuration
     String rpId = "localhost"; // ten mien
@@ -263,7 +280,8 @@ public class WebAuthnService {
 
         try {
             // 1. Parse Assertion Request -> AuthenticationRequest
-            AuthenticationRequest authenticationRequest = parseAuthenticationRequest(request.getCredentialJson());
+            AuthenticationRequest authenticationRequest =
+                    webAuthnParser.parseAuthenticationRequest(request.getCredentialJson());
 
             // 2. Find the credential in DB
             byte[] credentialId = authenticationRequest.getCredentialId();
@@ -278,84 +296,61 @@ public class WebAuthnService {
                 throw new RuntimeException("Credential does not belong to user");
             }
 
-            // 3. Verify
-            // ServerProperty serverProperty = new ServerProperty(
-            // new Origin(originUrl), rpId, challenge, null);
-
-            // AuthenticationParameters(ServerProperty serverProperty, Authenticator
-            // authenticator, boolean userVerificationRequired, boolean
-            // userPresenceRequired)
-            // Or similar. Let's check constructor via trial/error or assume standard.
-            // Usually: (ServerProperty, Authenticator, boolean userVerification)
-            // But we don't have full Authenticator object easily constructed.
-
-            // Let's use the simplest constructor or manual validation if needed.
-            // AuthenticationParameters(ServerProperty serverProperty, Authenticator
-            // authenticator, boolean userVerificationRequired)
-
-            // Constructing Authenticator for existing credential
-            // We need the COSE Key.
-            // Since we didn't store it properly (Placeholder), this step is problematic.
-            // I will modify the method to Update the key on success if we can?
-            // No, we can't update key from Authentication.
-
-            // I will SKIP the validate() call in this specific instance because we lack the
-            // COSE Key in DB.
-            // This is a known limitation until Registration is fully fixed to store COSE
-            // Key.
-            // I will just verify the Challenge and Origin presence manually if possible, or
-            // trust the flow for this demo.
-            // BUT user wants security.
-
-            // Important: I will attempt to reconstruct using the stored algorithm at least?
-            // No, impossible without Public Key.
-
-            // DECISION: I will throw an exception if PLACEHOLDER is found, advising user to
-            // Re-Register.
-            // But first I must fix Registration to store the key.
-
+            // 3. Verify the WebAuthn assertion using stored public key
             if (key.getPublicKeyCose() == null || key.getPublicKeyCose().length == 0) {
                 log.warn("COSE key is empty. User needs to re-register their passkey.");
                 throw new RuntimeException("Passkey không hợp lệ. Vui lòng đăng ký lại.");
             }
 
-            // TODO: Implement full WebAuthn assertion validation:
-            // 1. Deserialize COSE key: COSEKey coseKey = converter.getCborConverter().readValue(key.getPublicKeyCose(),
-            // COSEKey.class)
-            // 2. Build Authenticator from stored COSE key + counter
-            // 3. Call webAuthnManager.validate(authenticationRequest, authenticationParameters)
-            // For now, we verify the challenge is correct and credential belongs to user.
-            log.info("WebAuthn assertion accepted for user {} with credential {}", userId, credentialIdBase64);
+            // 3a. Deserialize COSE key from stored CBOR bytes
+            ObjectConverter objConverter = new ObjectConverter();
+            COSEKey coseKey = objConverter.getCborConverter().readValue(key.getPublicKeyCose(), COSEKey.class);
 
-            // Update Counter
-            key.setCounter(key.getCounter() + 1);
-            usersKeysRepository.save(key);
+            // 3b. Build AttestedCredentialData from stored credential
+            AAGUID aaguid =
+                    (key.getAaguid() != null && !key.getAaguid().isEmpty()) ? new AAGUID(key.getAaguid()) : AAGUID.NULL;
+            AttestedCredentialData attestedCredentialData = new AttestedCredentialData(aaguid, credentialId, coseKey);
+
+            // 3c. Build Authenticator from stored data
+            AuthenticatorImpl authenticator = new AuthenticatorImpl(attestedCredentialData, null, key.getCounter());
+
+            // 3d. Build ServerProperty
+            ServerProperty serverProperty = new ServerProperty(new Origin(originUrl), rpId, challenge, null);
+
+            // 3e. Build AuthenticationParameters
+            AuthenticationParameters authenticationParameters =
+                    new AuthenticationParameters(serverProperty, authenticator, null, false);
+
+            // 3f. Validate the assertion (verifies signature with public key, origin, rpId,
+            // challenge, counter)
+            AuthenticationData authenticationData =
+                    webAuthnManager.validate(authenticationRequest, authenticationParameters);
+
+            log.info("WebAuthn assertion verified for user {} with credential {}", userId, credentialIdBase64);
+
+            // Update Counter from actual authenticator response
+            long newCounter = authenticationData.getAuthenticatorData().getSignCount();
+
+            // Nhiều authenticator hiện đại (Windows Hello, Touch ID, Android)
+            // không hỗ trợ sign counting → luôn trả về signCount = 0.
+            // Chỉ kiểm tra replay nếu authenticator thực sự dùng counter (newCounter > 0).
+            if (newCounter > 0) {
+                if (newCounter <= key.getCounter()) {
+                    throw new RuntimeException("Potential replay attack detected");
+                }
+                key.setCounter(newCounter);
+                usersKeysRepository.save(key);
+            } else if (key.getCounter() > 0) {
+                // Authenticator trước đây có counter > 0 mà giờ trả 0 → đáng nghi
+                log.warn(
+                        "Counter went from {} to 0 for credential {} — possible cloned key",
+                        key.getCounter(),
+                        credentialIdBase64);
+            }
 
         } catch (Exception e) {
-            throw new RuntimeException("Authentication failed: " + e.getMessage());
+            log.error("Authentication failed at step: {}", e.getClass().getSimpleName(), e);
+            throw new RuntimeException("Authentication failed: " + e.getMessage(), e);
         }
-    }
-
-    private AuthenticationRequest parseAuthenticationRequest(String json) throws Exception {
-        JsonNode root = objectMapper.readTree(json);
-
-        String idB64 = root.get("id").asText();
-        byte[] credentialId = Base64.getUrlDecoder().decode(idB64);
-
-        JsonNode response = root.get("response");
-        String authenticatorDataB64 = response.get("authenticatorData").asText();
-        String clientDataJSONB64 = response.get("clientDataJSON").asText();
-        String signatureB64 = response.get("signature").asText();
-        String userHandleB64 =
-                response.has("userHandle") && !response.get("userHandle").isNull()
-                        ? response.get("userHandle").asText()
-                        : null;
-
-        byte[] authenticatorData = Base64.getUrlDecoder().decode(authenticatorDataB64);
-        byte[] clientDataJSON = Base64.getUrlDecoder().decode(clientDataJSONB64);
-        byte[] signature = Base64.getUrlDecoder().decode(signatureB64);
-        byte[] userHandle = userHandleB64 != null ? Base64.getUrlDecoder().decode(userHandleB64) : null;
-
-        return new AuthenticationRequest(credentialId, authenticatorData, clientDataJSON, signature, userHandle);
     }
 }

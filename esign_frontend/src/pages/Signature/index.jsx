@@ -3,17 +3,19 @@ import { PenTool, Trash2, Edit2, CheckCircle2, Type, Upload, Eraser, Image as Im
 import SignaturePad from '../../components/SignaturePad/SignaturePad';
 import { toast } from 'react-toastify';
 import { saveSignature, getSignature } from '../../service/signatureApi';
+import { motion, AnimatePresence } from 'framer-motion';
 
-import { startRegistration, finishRegistration, startAuthentication, finishAuthentication } from '../../service/webAuthnApi';
+import { startRegistration, finishRegistration, startAuthentication, finishAuthentication, getPasskeyStatus } from '../../service/webAuthnApi';
 import { base64urlToBuffer, credentialToJSON } from '../../utils/webauthn';
 
 const Signature = () => {
     const [signature, setSignature] = useState(null);
     const [isEditing, setIsEditing] = useState(false);
     const [creationTab, setCreationTab] = useState('draw');
-    const [selectedColor, setSelectedColor] = useState('black');
+    const [selectedColor, setSelectedColor] = useState('#000000');
     const [typedName, setTypedName] = useState('Nguyễn Văn A');
     const [selectedFont, setSelectedFont] = useState(0);
+    const [passkeyStatus, setPasskeyStatus] = useState(false);
 
     const fonts = ["Dancing Script", "Great Vibes", "Sacramento"];
 
@@ -21,24 +23,33 @@ const Signature = () => {
         const fetchSignature = async () => {
             try {
                 const response = await getSignature();
-                if (response && response.result) {
-                    setSignature(response.result.imageBase64);
+                if (response && response.result && response.result.imageUrl) {
+                    setSignature(response.result.imageUrl);
                 }
             } catch (error) {
                 console.error("Failed to fetch signature", error);
             }
         };
+        const fetchPasskeyStatus = async () => {
+            try {
+                const response = await getPasskeyStatus();
+                if (response) {
+                    setPasskeyStatus(response.result);
+                }
+            } catch (error) {
+                console.error("Failed to fetch passkey status", error);
+            }
+        };
         fetchSignature();
+        fetchPasskeyStatus();
     }, []);
 
     const authenticatePasskey = async () => {
         try {
-            // 1. Start Auth
             const startResponse = await startAuthentication();
             const optionsJson = startResponse.result.optionsJson;
             const options = JSON.parse(optionsJson);
 
-            // Fix parsing
             if (options.challenge) options.challenge = base64urlToBuffer(options.challenge);
             if (options.allowCredentials) {
                 options.allowCredentials = options.allowCredentials.map(c => ({
@@ -47,10 +58,8 @@ const Signature = () => {
                 }));
             }
 
-            // 2. Browser Prompt
             const credential = await navigator.credentials.get({ publicKey: options });
 
-            // 3. Finish Auth
             const credentialJson = credentialToJSON(credential);
             await finishAuthentication(credentialJson);
 
@@ -69,31 +78,24 @@ const Signature = () => {
 
     const registerPasskey = async () => {
         try {
-            // 1. Check support
             if (!window.PublicKeyCredential) {
                 toast.error("Trình duyệt không hỗ trợ WebAuthn");
                 return false;
             }
 
-            // 2. Start Registration
             const startResponse = await startRegistration();
             const optionsJson = startResponse.result.optionsJson;
-
-            // 3. Parse Options
             const options = JSON.parse(optionsJson);
 
-            // Fix parsing: values from backend (WebAuthn4J) are likely Base64URL strings
             if (options.challenge) {
-                // Handle if it's string or object (just in case)
                 const challengeVal = (typeof options.challenge === 'string') ? options.challenge : options.challenge.value;
                 options.challenge = base64urlToBuffer(challengeVal);
             }
             if (options.user && options.user.id) {
-                const userIdVal = (typeof options.user.id === 'string') ? options.user.id : options.user.id; // user.id from webauthn4j is usually string
+                const userIdVal = (typeof options.user.id === 'string') ? options.user.id : options.user.id;
                 options.user.id = base64urlToBuffer(userIdVal);
             }
 
-            // Also excludeCredentials if any
             if (options.excludeCredentials) {
                 options.excludeCredentials = options.excludeCredentials.map(c => ({
                     ...c,
@@ -101,10 +103,8 @@ const Signature = () => {
                 }));
             }
 
-            // 4. Create Credential
             const credential = await navigator.credentials.create({ publicKey: options });
 
-            // 5. Finish Registration
             const credentialJson = credentialToJSON(credential);
             await finishRegistration(credentialJson);
 
@@ -112,7 +112,6 @@ const Signature = () => {
             return true;
 
         } catch (error) {
-            // Suppress error if user cancelled (NotAllowedError) to avoid frightening them if they just didn't want to register
             if (error.name === 'NotAllowedError') {
                 console.log("User cancelled WebAuthn registration");
                 toast.info("Bạn cần đăng ký Passkey để tiếp tục.");
@@ -124,6 +123,27 @@ const Signature = () => {
         }
     };
 
+    const renderTypedSignatureToPng = (text, fontFamily, color) => {
+        return new Promise(async (resolve) => {
+            await document.fonts.ready;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 600;
+            canvas.height = 200;
+            const ctx = canvas.getContext('2d');
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = color || '#000000';
+            ctx.font = `48px "${fontFamily}", cursive`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+            resolve(canvas.toDataURL('image/png'));
+        });
+    };
+
     const handleSaveSignature = async () => {
         let finalSignature = null;
         let signatureType = '';
@@ -132,7 +152,12 @@ const Signature = () => {
             finalSignature = padRef.current.getDataURL();
             signatureType = 'DRAWN';
         } else if (creationTab === 'type') {
-            finalSignature = `data:image/svg+xml;utf8,${encodeURIComponent(`\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"600\" height=\"200\">\n<text x=\"50%\" y=\"50%\" dominant-baseline=\"middle\" text-anchor=\"middle\" font-family=\"Dancing Script, cursive\" font-size=48 fill=\"${selectedColor}\">${typedName}</text>\n</svg>`)} `;
+            if (!typedName || !typedName.trim()) {
+                toast.error("Vui lòng nhập tên trước khi lưu!");
+                return;
+            }
+            const fontFamily = fonts[selectedFont] || 'Dancing Script';
+            finalSignature = await renderTypedSignatureToPng(typedName, fontFamily, selectedColor);
             signatureType = 'TYPED';
         } else if (creationTab === 'upload') {
             signatureType = 'UPLOADED';
@@ -144,19 +169,16 @@ const Signature = () => {
             return;
         }
 
-
-        const isUpdate = !!signature;
-
-        if (isUpdate) {
+        if (passkeyStatus) {
             const verified = await authenticatePasskey();
             if (!verified) return;
         } else {
-            // New Signature: Mandatory Passkey Registration
             const isRegistered = await registerPasskey();
             if (!isRegistered) {
                 toast.error("Bạn phải tạo Passkey để lưu chữ ký!");
-                return; // Stop if registration failed or cancelled
+                return;
             }
+            setPasskeyStatus(true);
         }
 
         try {
@@ -165,7 +187,6 @@ const Signature = () => {
                 toast.error("Lỗi dữ liệu chữ ký");
                 return;
             }
-
             const binaryString = window.atob(base64Data);
             const len = binaryString.length;
             const bytes = new Uint8Array(len);
@@ -194,68 +215,59 @@ const Signature = () => {
         }
     };
 
-    const handleDeleteSignature = async () => {
-        if (window.confirm("Bạn có chắc chắn muốn xóa chữ ký này không?")) {
-            // Require Auth
-            const verified = await authenticatePasskey();
-            if (!verified) return;
-
-            setSignature(null);
-            toast.info("Đã xóa chữ ký.");
-        }
-    };
-
     const padRef = useRef(null);
 
     return (
-        <div>
-            <div className="flex justify-between items-center mb-8">
+        <div className="space-y-8 max-w-4xl mx-auto pb-10">
+            {/* Header section */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2">Chữ ký của bạn</h1>
-                    <p className="text-slate-500">Mỗi tài khoản chỉ được sở hữu một chữ ký số duy nhất.</p>
+                    <h1 className="text-3xl font-bold text-secondary-900 font-display">Chữ ký cá nhân</h1>
+                    <p className="text-secondary-400 font-medium mt-1">Quản lý duy nhất một chữ ký số định danh chính chủ của bạn</p>
                 </div>
             </div>
 
             {/* VIEW MODE */}
             {!isEditing && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px] flex flex-col items-center justify-center relative">
+                <div className="bg-white rounded-[32px] shadow-premium border border-secondary-100 min-h-[400px] flex flex-col items-center justify-center p-8 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-primary-50/30 rounded-full blur-[100px] -mr-32 -mt-32 pointer-events-none" />
+                    
                     {signature ? (
-                        <div className="text-center w-full max-w-2xl">
-                            <div className="mb-8 p-10 border-2 border-slate-100 rounded-xl bg-slate-50/50">
-                                <img src={signature} alt="My Signature" className="h-40 mx-auto object-contain" />
+                        <div className="text-center w-full max-w-xl z-10">
+                            <div className="mb-8 p-12 bg-secondary-50 border border-secondary-100 rounded-[24px] flex items-center justify-center relative group">
+                                <img src={signature} alt="My Signature" className="h-32 object-contain select-none filter drop-shadow-sm transition-transform duration-500 group-hover:scale-105" />
+                                <span className="absolute top-3 right-3 text-[10px] font-bold text-secondary-400 uppercase tracking-widest bg-white border border-secondary-200 px-3 py-1 rounded-full">Hiện tại</span>
                             </div>
-                            <div className="flex justify-center gap-4">
-                                <button
+                            <div className="flex justify-center gap-3">
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
                                     onClick={() => setIsEditing(true)}
-                                    className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 shadow-md transition-all font-medium"
+                                    className="flex items-center gap-2 px-6 py-3.5 bg-primary-600 hover:bg-primary-700 text-white rounded-2xl shadow-lg shadow-primary-500/25 transition-all font-bold text-sm"
                                 >
-                                    <Edit2 className="w-5 h-5" /> Thay đổi chữ ký
-                                </button>
-                                <button
-                                    onClick={handleDeleteSignature}
-                                    className="flex items-center gap-2 px-6 py-3 bg-white text-red-600 border border-red-200 rounded-full hover:bg-red-50 hover:border-red-300 transition-all font-medium"
-                                >
-                                    <Trash2 className="w-5 h-5" /> Xóa
-                                </button>
+                                    <Edit2 className="w-4 h-4" /> Thay đổi chữ ký
+                                </motion.button>
                             </div>
-                            <div className="mt-8 flex items-center justify-center gap-2 text-green-600 bg-green-50 py-2 px-4 rounded-full mx-auto w-fit">
-                                <CheckCircle2 className="w-5 h-5" />
-                                <span className="text-sm font-medium">Chữ ký đang hoạt động</span>
+                            <div className="mt-8 inline-flex items-center gap-2 text-emerald-600 bg-emerald-50/50 border border-emerald-100 py-2 px-4 rounded-full">
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span className="text-xs font-bold uppercase tracking-wider">Bảo vệ bởi hệ thống Passkey</span>
                             </div>
                         </div>
                     ) : (
-                        <div className="text-center">
-                            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
-                                <PenTool className="w-10 h-10" />
+                        <div className="text-center max-w-md z-10">
+                            <div className="w-20 h-20 bg-secondary-50 border border-secondary-100 rounded-2xl flex items-center justify-center mx-auto mb-6 text-secondary-400 shadow-inner">
+                                <PenTool className="w-8 h-8 text-primary-600" />
                             </div>
-                            <h3 className="text-xl font-bold text-slate-900 mb-2">Chưa có chữ ký</h3>
-                            <p className="text-slate-500 max-w-sm mx-auto mb-8">Bạn chưa tạo chữ ký nào. Hãy tạo ngay để bắt đầu ký tài liệu điện tử.</p>
-                            <button
+                            <h3 className="text-xl font-bold text-secondary-900 font-display mb-2">Chưa tạo chữ ký cá nhân</h3>
+                            <p className="text-secondary-400 font-medium mb-8 leading-relaxed">Bạn chưa thiết lập chữ ký nào trên hệ thống. Hãy tạo chữ ký ngay để tiến hành ký kết văn bản hợp pháp trực tuyến.</p>
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
                                 onClick={() => setIsEditing(true)}
-                                className="px-8 py-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all font-bold text-lg"
+                                className="px-8 py-4 bg-primary-600 hover:bg-primary-700 text-white rounded-2xl shadow-lg shadow-primary-500/25 transition-all font-bold text-base"
                             >
-                                + Tạo chữ ký mới
-                            </button>
+                                + Thiết lập chữ ký mới
+                            </motion.button>
                         </div>
                     )}
                 </div>
@@ -263,53 +275,58 @@ const Signature = () => {
 
             {/* EDIT MODE */}
             {isEditing && (
-                <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-                    {/* Toolbar */}
-                    <div className="border-b border-slate-200 bg-slate-50 flex">
-                        <button
-                            onClick={() => setCreationTab('draw')}
-                            className={`flex-1 py-4 text-sm font-bold text-center transition-colors flex items-center justify-center gap-2 relative
-                                ${creationTab === 'draw' ? 'text-indigo-600 bg-white' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                            {creationTab === 'draw' && <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-600" />}
-                            <PenTool className="w-4 h-4" /> Vẽ tay
-                        </button>
-                        <button
-                            onClick={() => setCreationTab('type')}
-                            className={`flex-1 py-4 text-sm font-bold text-center transition-colors flex items-center justify-center gap-2 relative
-                                ${creationTab === 'type' ? 'text-indigo-600 bg-white' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                            {creationTab === 'type' && <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-600" />}
-                            <Type className="w-4 h-4" /> Gõ từ
-                        </button>
-                        <button
-                            onClick={() => setCreationTab('upload')}
-                            className={`flex-1 py-4 text-sm font-bold text-center transition-colors flex items-center justify-center gap-2 relative
-                                ${creationTab === 'upload' ? 'text-indigo-600 bg-white' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                            {creationTab === 'upload' && <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-600" />}
-                            <Upload className="w-4 h-4" /> Tải ảnh lên
-                        </button>
+                <div className="bg-white rounded-[32px] shadow-premium border border-secondary-100 overflow-hidden">
+                    {/* Toolbar / Tabs */}
+                    <div className="border-b border-secondary-100 bg-secondary-50/30 p-2 flex gap-1">
+                        {[
+                            { id: 'draw', label: 'Vẽ trực tiếp', icon: PenTool },
+                            { id: 'type', label: 'Tạo từ bàn phím', icon: Type },
+                            { id: 'upload', label: 'Tải tệp hình ảnh', icon: Upload }
+                        ].map(tab => {
+                            const active = creationTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setCreationTab(tab.id)}
+                                    className={`flex-1 py-3.5 text-xs font-bold rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 relative ${
+                                        active 
+                                            ? 'bg-white text-primary-600 shadow-sm border border-secondary-100' 
+                                            : 'text-secondary-500 hover:text-secondary-800'
+                                    }`}
+                                >
+                                    <tab.icon className="w-4 h-4" />
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
                     </div>
 
                     {/* Canvas Area */}
-                    <div className="p-8 min-h-[400px] bg-white">
+                    <div className="p-8 min-h-[400px] bg-white flex flex-col justify-center">
                         {creationTab === 'draw' && (
-                            <div className="h-full flex flex-col gap-4">
-                                <div className="flex-1 bg-white border-2 border-dashed border-slate-300 rounded-xl relative cursor-crosshair hover:border-indigo-400 transition-colors group min-h-[300px]">
+                            <div className="h-full flex flex-col gap-6">
+                                <div className="flex-1 bg-secondary-50/50 border-2 border-dashed border-secondary-200 rounded-2xl relative cursor-crosshair hover:border-primary-400 transition-colors group min-h-[300px]">
                                     <SignaturePad ref={padRef} color={selectedColor} />
                                     <div className="absolute top-4 right-4">
-                                        <button onClick={() => padRef.current && padRef.current.clear()} className="p-2 bg-white shadow border rounded-lg hover:text-red-500 transition-colors" title="Xóa">
-                                            <Eraser className="w-5 h-5" />
+                                        <button 
+                                            onClick={() => padRef.current && padRef.current.clear()} 
+                                            className="p-3 bg-white shadow-md border border-secondary-100 rounded-xl text-secondary-500 hover:text-red-500 transition-all hover:scale-105" 
+                                            title="Xóa vẽ nháp"
+                                        >
+                                            <Eraser className="w-4 h-4" />
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex justify-center gap-4">
-                                    {['#000000', '#4f46e5', '#dc2626'].map(color => (
+                                <div className="flex justify-center gap-3">
+                                    {['#000000', '#4361ee', '#e63946'].map(color => (
                                         <button
                                             key={color}
                                             onClick={() => setSelectedColor(color)}
-                                            className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${selectedColor === color ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'}`}
+                                            className={`w-9 h-9 rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${
+                                                selectedColor === color 
+                                                    ? 'border-primary-500 ring-4 ring-primary-100' 
+                                                    : 'border-transparent'
+                                            }`}
                                             style={{ backgroundColor: color }}
                                         />
                                     ))}
@@ -318,14 +335,14 @@ const Signature = () => {
                         )}
 
                         {creationTab === 'type' && (
-                            <div className="max-w-xl mx-auto space-y-8">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Nhập tên của bạn</label>
+                            <div className="max-w-xl w-full mx-auto space-y-8">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-secondary-400 uppercase tracking-[0.2em] px-1">Nhập họ & tên</label>
                                     <input
                                         type="text"
                                         value={typedName}
                                         onChange={(e) => setTypedName(e.target.value)}
-                                        className="w-full text-center text-2xl font-bold py-4 border-b-2 border-slate-300 focus:border-indigo-600 outline-none transition-colors bg-transparent"
+                                        className="w-full text-center text-3xl font-bold py-4 border-b-2 border-secondary-200 focus:border-primary-500 outline-none transition-colors bg-transparent text-secondary-800"
                                         placeholder="VD: Nguyễn Văn A"
                                     />
                                 </div>
@@ -334,19 +351,36 @@ const Signature = () => {
                                         <div
                                             key={idx}
                                             onClick={() => setSelectedFont(idx)}
-                                            className={`p-6 border rounded-xl text-center text-4xl cursor-pointer transition-all hover:bg-slate-50
-                                                ${selectedFont === idx ? 'border-indigo-500 bg-indigo-50/30' : 'border-slate-200'}`}
-                                            style={{ fontFamily: 'cursive' }}
+                                            className={`p-8 border rounded-2xl text-center text-4xl cursor-pointer transition-all hover:scale-[1.01] hover:bg-secondary-50 ${
+                                                selectedFont === idx 
+                                                    ? 'border-primary-500 bg-primary-50/20 text-primary-600 shadow-sm' 
+                                                    : 'border-secondary-100 text-secondary-700'
+                                            }`}
+                                            style={{ fontFamily: `"${font}", cursive`, color: selectedColor }}
                                         >
                                             {typedName || 'Chữ ký mẫu'}
                                         </div>
+                                    ))}
+                                </div>
+                                <div className="flex justify-center gap-3">
+                                    {['#000000', '#4361ee', '#e63946'].map(color => (
+                                        <button
+                                            key={color}
+                                            onClick={() => setSelectedColor(color)}
+                                            className={`w-9 h-9 rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${
+                                                selectedColor === color 
+                                                    ? 'border-primary-500 ring-4 ring-primary-100' 
+                                                    : 'border-transparent'
+                                            }`}
+                                            style={{ backgroundColor: color }}
+                                        />
                                     ))}
                                 </div>
                             </div>
                         )}
 
                         {creationTab === 'upload' && (
-                            <div className="h-full flex flex-col items-center justify-center p-12 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50/50 hover:bg-indigo-50/30 hover:border-indigo-400 transition-all cursor-pointer min-h-[300px] relative">
+                            <div className="h-full flex flex-col items-center justify-center p-12 border-2 border-dashed border-secondary-200 rounded-[24px] bg-secondary-50/50 hover:bg-primary-50/10 hover:border-primary-400 transition-all cursor-pointer min-h-[300px] relative">
                                 <input
                                     type="file"
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -363,16 +397,18 @@ const Signature = () => {
                                     }}
                                 />
                                 {signature && creationTab === 'upload' ? (
-                                    <img src={signature} alt="Uploaded" className="max-h-60 max-w-full object-contain" />
+                                    <div className="relative p-6 bg-white border border-secondary-100 rounded-2xl shadow-sm">
+                                        <img src={signature} alt="Uploaded signature" className="max-h-60 max-w-full object-contain" />
+                                    </div>
                                 ) : (
                                     <>
-                                        <div className="w-20 h-20 bg-white rounded-full shadow-sm flex items-center justify-center mb-6 text-indigo-500">
-                                            <ImageIcon className="w-10 h-10" />
+                                        <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-secondary-100 flex items-center justify-center mb-6 text-primary-600">
+                                            <ImageIcon className="w-8 h-8" />
                                         </div>
-                                        <h3 className="text-xl font-bold text-slate-900 mb-2">Tải ảnh chữ ký lên</h3>
-                                        <p className="text-slate-500 mb-8 max-w-md text-center">Kéo thả hình ảnh vào đây hoặc nhấn để chọn tập tin (JPG, PNG)</p>
-                                        <button className="px-6 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50 shadow-sm">
-                                            Chọn tập tin
+                                        <h3 className="text-lg font-bold text-secondary-900 font-display mb-1">Tải lên tệp ảnh chữ ký</h3>
+                                        <p className="text-secondary-400 font-medium mb-6 max-w-sm text-center text-sm">Hỗ trợ định dạng PNG hoặc JPG. Khuyên dùng hình ảnh nền trong suốt.</p>
+                                        <button className="px-6 py-2.5 bg-white border border-secondary-200 rounded-xl text-secondary-700 font-bold text-xs hover:bg-secondary-50 transition-all shadow-sm">
+                                            Chọn từ máy tính
                                         </button>
                                     </>
                                 )}
@@ -381,20 +417,22 @@ const Signature = () => {
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="px-8 py-6 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+                    <div className="px-8 py-6 bg-secondary-50/50 border-t border-secondary-100 flex justify-end gap-3">
                         <button
                             onClick={() => setIsEditing(false)}
-                            className="px-6 py-3 bg-white text-slate-700 border border-slate-300 rounded-lg font-medium hover:bg-slate-100 transition-colors"
+                            className="px-6 py-3 text-sm font-bold text-secondary-500 hover:text-secondary-800 transition-colors"
                         >
                             Hủy bỏ
                         </button>
-                        <button
+                        <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
                             onClick={handleSaveSignature}
-                            className="px-8 py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+                            className="px-8 py-3.5 bg-primary-600 hover:bg-primary-700 text-white rounded-2xl font-bold shadow-lg shadow-primary-500/25 transition-all flex items-center gap-2"
                         >
-                            <Save className="w-5 h-5" />
+                            <Save className="w-4 h-4" />
                             Lưu chữ ký
-                        </button>
+                        </motion.button>
                     </div>
                 </div>
             )}

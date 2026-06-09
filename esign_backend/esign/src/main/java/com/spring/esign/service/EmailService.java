@@ -2,9 +2,13 @@ package com.spring.esign.service;
 
 import java.security.SecureRandom;
 
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -156,5 +160,41 @@ public class EmailService {
 
         message.setText(text);
         mailSender.send(message);
+    }
+
+    public void sendInviteOrg(String toEmail, String token, String orgName) throws MessagingException {
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+        String url = "http://localhost:5173/invitations?token=" + token;
+
+        helper.setTo(toEmail);
+        helper.setSubject("Thư mời vào tổ chức");
+
+        String htmlContent = "<h3>Chào bạn,</h3>"
+                + "<p>Vui lòng click vào link dưới đây để xác nhận tham gia tổ chức:" + orgName
+                + ". Lưu ý: Link này sẽ hết hạn sau <b>7 ngày</b>.</p>"
+                + "<a href='" + url + "'>Xác nhận tham gia ngay</a>";
+
+        helper.setText(htmlContent, true);
+
+        mailSender.send(message);
+    }
+
+    public void sendInvitationExpiredWarning(String toEmail, String orgName) throws MessagingException {
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+        helper.setTo(toEmail);
+        helper.setSubject("Nhắc nhở hạn thư mới tham gia tổ chức");
+
+        String htmlContent = "<h3>Chào bạn,</h3>"
+                + "<p>Vui lòng kiểm tra lại hòm thư , thư mời vào tổ chức :" + orgName
+                + " sẽ hết hạn vào ngày mai . Bạn hãy thực hiện thao tác trước khi thư hết hạn";
+
+        helper.setText(htmlContent, true);
+
+        mailSender.send(message);
+        ;
     }
 }

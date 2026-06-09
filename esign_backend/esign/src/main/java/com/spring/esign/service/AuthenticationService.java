@@ -284,6 +284,11 @@ public class AuthenticationService {
                 .findByUserAndAccount_AccountId(user, accountId)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
 
+        // Chặn chuyển đổi vào tổ chức đã bị xóa
+        if (member.getAccount().isDeleted()) {
+            throw new AppException(ErrorCode.ORGANIZATION_DELETED);
+        }
+
         return AuthenticationResponse.builder()
                 .token(generateToken(member))
                 .autheticated(true)
@@ -297,10 +302,17 @@ public class AuthenticationService {
         List<AccountMember> memberships = accountMemberRepository.findByUser(user);
 
         return memberships.stream()
+                .filter(member -> !member.getAccount().isDeleted()) // Lọc bỏ tổ chức đã bị xóa
                 .map(member -> AccountResponse.builder()
+                        .accountId(member.getAccount().getAccountId())
                         .accountName(member.getAccount().getAccountName())
                         .accountType(member.getAccount().getAccountType().name())
                         .role(member.getRole().name())
+                        .accountUrl(member.getAccount().getAccountUrl())
+                        .canUpload(member.getCanUpload())
+                        .canSign(member.getCanSign())
+                        .canViewDocs(member.getCanViewDocs())
+                        .canInvite(member.getCanInvite())
                         .build())
                 .collect(Collectors.toList());
     }

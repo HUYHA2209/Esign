@@ -35,7 +35,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 
 const DocumentEditor = () => {
     const navigate = useNavigate();
-    const { id } = useParams();
+    const { id, orgUrl } = useParams();
     const pdfScrollRef = useRef(null);
     const lastPointerPosition = useRef({ x: 0, y: 0 });
 
@@ -85,7 +85,6 @@ const DocumentEditor = () => {
         setUploadedFiles,
     });
 
-    // ─── Hook: Event-Based Save ───
     const { saveWithFiles, saveNow, confirmAndSave } = useAutoSaveDraft({
         id,
         documentName,
@@ -95,6 +94,8 @@ const DocumentEditor = () => {
         uploadedFiles,
         navigate,
         isLoading,
+        enableSigningOrder,
+        orgUrl
     });
 
     // ─── PDF Callbacks ───
@@ -367,7 +368,7 @@ const DocumentEditor = () => {
         }
         setRecipients(prev => prev.map(r =>
             r.id === recipientId ? {
-                ...r, userId: user.id, email: user.email, name: user.fullName, isSearching: false, searchResults: []
+                ...r, userId: user.id, email: user.email, name: user.selectedContextName || user.fullName, accountId: user.accountId || null, isSearching: false, searchResults: []
             } : r
         ));
     };
@@ -435,7 +436,7 @@ const DocumentEditor = () => {
 
     const handleBackNavigation = async () => {
         await confirmAndSave();  // Hỏi confirm nếu có unsaved changes
-        navigate('/documents');
+        navigate(orgUrl ? `/o/${orgUrl}/documents` : '/documents');
     };
 
     const handleSendDocument = async () => {
@@ -443,6 +444,7 @@ const DocumentEditor = () => {
             toast.error("Vui lòng lưu bản nháp trước khi gửi!");
             return;
         }
+        await saveNow();
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         const validRecipients = recipients.filter(r => r.email && r.email.trim() !== '');
         if (validRecipients.length === 0) {
@@ -475,7 +477,7 @@ const DocumentEditor = () => {
 
         await sendDocumentFlow({
             id, uploadedFiles, documentName, recipients, enableSigningOrder, fields, signatureFontSize,
-            sendDocument, toast, navigate, setIsSending
+            sendDocument, toast, navigate, setIsSending, orgUrl
         });
     };
 

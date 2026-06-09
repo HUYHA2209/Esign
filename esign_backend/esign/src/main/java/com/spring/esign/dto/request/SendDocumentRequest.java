@@ -1,5 +1,6 @@
 package com.spring.esign.dto.request;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import lombok.AccessLevel;
@@ -17,4 +18,6 @@ import lombok.experimental.FieldDefaults;
 public class SendDocumentRequest {
     String message;
     List<SignerDto> signers;
+    Boolean enableSigningOrder;
+    LocalDateTime expiresAt;
 }

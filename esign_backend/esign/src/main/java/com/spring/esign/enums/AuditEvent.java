@@ -1,9 +1,13 @@
 package com.spring.esign.enums;
 
 public enum AuditEvent {
-    CREATED,
+    UPLOAD,
+    SENT,
     VIEWED,
     SIGNED,
     DECLINED,
-    COMPLETED
+    COMPLETED,
+    EXPIRED,
+    VOIDED,
+    DOWNLOADED
 }

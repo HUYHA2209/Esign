@@ -20,5 +20,6 @@ public class SignerDto {
     String name;
     String role;
     Integer signingOrder;
+    Long accountId;
     List<FieldRequest> fields;
 }

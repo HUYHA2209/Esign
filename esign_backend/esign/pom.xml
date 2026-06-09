@@ -43,6 +43,19 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
+
+        <!--WebSocket-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
+        <!--Thymeleaf-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -136,6 +149,20 @@
             <groupId>com.webauthn4j</groupId>
             <artifactId>webauthn4j-core</artifactId>
             <version>0.21.0.RELEASE</version>
+        </dependency>
+
+        <!-- PDF Processing (cho tính năng Pre-seal và bổ sung Audit log page) -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
+
+        <!-- BouncyCastle PKIX (Cần thiết cho quá trình tạo chữ ký số PAdES chuẩn) -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.76</version>
         </dependency>
     </dependencies>
 

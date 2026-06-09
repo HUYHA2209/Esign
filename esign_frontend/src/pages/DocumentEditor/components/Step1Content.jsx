@@ -106,8 +106,8 @@ const Step1Content = ({
             </section>
 
             {/* Recipients Section */}
-            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm relative">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between rounded-t-2xl">
                     <div>
                         <h2 className="text-xl font-semibold text-slate-900">Người nhận</h2>
                         <p className="text-sm text-slate-500 mt-1">Thêm người nhận vào tài liệu</p>
@@ -146,15 +146,23 @@ const Step1Content = ({
 
                     <div className="space-y-4">
                         <div className="grid grid-cols-12 gap-4 text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">
-                            <div className="col-span-5">Email</div>
-                            <div className="col-span-5">Tên</div>
+                            <div className="col-span-6 flex items-center gap-2">
+                                {enableSigningOrder && <span className="w-6 text-center">#</span>}
+                                <span>Email</span>
+                            </div>
+                            <div className="col-span-4">Tên</div>
                             <div className="col-span-2"></div>
                         </div>
 
                         {recipients.map((recipient, index) => (
-                            <div key={recipient.id} className="grid grid-cols-12 gap-4 items-center relative">
-                                <div className="col-span-5">
-                                    <div className="relative">
+                            <div key={recipient.id} className={`grid grid-cols-12 gap-4 items-center relative ${recipient.isSearching ? 'z-20' : 'z-10'}`}>
+                                <div className="col-span-6 flex items-center gap-2">
+                                    {enableSigningOrder && (
+                                        <div className="w-6 h-6 flex-shrink-0 bg-indigo-100 text-indigo-700 font-bold text-xs rounded-full flex items-center justify-center shadow-sm">
+                                            {index + 1}
+                                        </div>
+                                    )}
+                                    <div className="relative flex-1">
                                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
                                             type="email"
@@ -167,19 +175,66 @@ const Step1Content = ({
                                             <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-600" />
                                         )}
                                         {recipient.isSearching && recipient.searchResults && recipient.searchResults.length > 0 && (
-                                            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto">
-                                                {recipient.searchResults.map((user) => (
-                                                    <button
-                                                        key={user.id || user.email}
-                                                        onClick={() => handleSelectUser(recipient.id, user)}
-                                                        className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0"
-                                                    >
-                                                        <div className="flex flex-col">
-                                                            <span className="text-sm font-medium text-slate-900">{user.name || user.fullName || 'Chưa cập nhật tên'}</span>
-                                                            <span className="text-xs text-slate-500">{user.email}</span>
-                                                        </div>
-                                                    </button>
-                                                ))}
+                                            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-72 overflow-y-auto divide-y divide-slate-100">
+                                                {recipient.searchResults.flatMap((user) => {
+                                                    const items = [];
+                                                    if (user.workspaces && user.workspaces.length > 0) {
+                                                        user.workspaces.forEach((ws) => {
+                                                            const isPersonal = ws.accountType === 'PERSONAL';
+                                                            items.push(
+                                                                <button
+                                                                    key={`${user.id || user.email}-${ws.accountId}`}
+                                                                    onClick={() => handleSelectUser(recipient.id, { 
+                                                                        ...user, 
+                                                                        selectedContextName: isPersonal
+                                                                            ? `${user.name || user.fullName || 'Chưa cập nhật tên'} (Personal)`
+                                                                            : `${user.name || user.fullName || 'Chưa cập nhật tên'} (${ws.accountName})`,
+                                                                        accountId: ws.accountId
+                                                                    })}
+                                                                    className={`w-full text-left px-4 py-3 transition-colors duration-150 ${
+                                                                        isPersonal ? 'hover:bg-slate-50' : 'hover:bg-indigo-50/30'
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <span className="text-sm font-semibold text-slate-800">{user.name || user.fullName || 'Chưa cập nhật tên'}</span>
+                                                                            <span className={`px-2 py-0.5 text-[10px] font-medium rounded-md flex-shrink-0 border ${
+                                                                                isPersonal 
+                                                                                    ? 'bg-slate-100 text-slate-600 border-slate-200' 
+                                                                                    : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                                                                            }`}>
+                                                                                {isPersonal ? 'Cá nhân' : 'Tổ chức'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <span className="text-xs text-slate-500 break-all">{user.email}</span>
+                                                                        {!isPersonal && (
+                                                                            <span className="text-xs text-indigo-600 font-medium bg-indigo-50/55 px-2 py-0.5 rounded border border-indigo-100/50 self-start mt-0.5">
+                                                                                {ws.accountName}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        });
+                                                    } else {
+                                                        items.push(
+                                                            <button
+                                                                key={`${user.id || user.email}-personal`}
+                                                                onClick={() => handleSelectUser(recipient.id, { ...user, selectedContextName: `${user.name || user.fullName || 'Chưa cập nhật tên'} (Personal)` })}
+                                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors duration-150"
+                                                            >
+                                                                <div className="flex flex-col gap-1">
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <span className="text-sm font-semibold text-slate-800">{user.name || user.fullName || 'Chưa cập nhật tên'}</span>
+                                                                        <span className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-slate-100 text-slate-600 border border-slate-200 flex-shrink-0">Cá nhân</span>
+                                                                    </div>
+                                                                    <span className="text-xs text-slate-500 break-all">{user.email}</span>
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    }
+                                                    return items;
+                                                })}
                                             </div>
                                         )}
                                         {recipient.isSearching && recipient.email.length >= 2 && recipient.searchResults && recipient.searchResults.length === 0 && (
@@ -189,7 +244,7 @@ const Step1Content = ({
                                         )}
                                     </div>
                                 </div>
-                                <div className="col-span-5">
+                                <div className="col-span-4">
                                     <div className="relative">
                                         <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
@@ -218,7 +273,7 @@ const Step1Content = ({
                     </div>
                 </div>
 
-                <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end rounded-b-2xl">
                     <button
                         onClick={() => goToStep(2)}
                         disabled={!isStep1Complete}

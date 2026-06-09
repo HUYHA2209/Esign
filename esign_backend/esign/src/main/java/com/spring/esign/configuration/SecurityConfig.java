@@ -32,6 +32,8 @@ public class SecurityConfig {
         "/auth/logout"
     };
 
+    private final String[] WS_ENDPOINT = {"/ws/**"};
+
     @Autowired
     private CustomJWTDecoder customJWTDecoder;
 
@@ -40,6 +42,8 @@ public class SecurityConfig {
         httpSecurity
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(request -> request.requestMatchers(HttpMethod.POST, PUBLIC_ENDPOINT)
+                        .permitAll()
+                        .requestMatchers(WS_ENDPOINT)
                         .permitAll()
                         .anyRequest()
                         .authenticated());

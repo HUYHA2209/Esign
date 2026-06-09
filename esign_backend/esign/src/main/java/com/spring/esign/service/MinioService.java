@@ -70,4 +70,46 @@ public class MinioService {
             throw new RuntimeException("Error removing file from MinIO", e);
         }
     }
+
+    public String getPresignedUrl(String bucketName, String objectName) {
+        try {
+            return minioClient.getPresignedObjectUrl(io.minio.GetPresignedObjectUrlArgs.builder()
+                    .method(io.minio.http.Method.GET)
+                    .bucket(bucketName)
+                    .object(objectName)
+                    .expiry(60 * 60 * 24) // 24 hours
+                    .build());
+        } catch (Exception e) {
+            log.error("Error generating presigned URL for MinIO", e);
+            throw new RuntimeException("Error generating presigned URL for MinIO", e);
+        }
+    }
+
+    /**
+     * Copy file từ bucket nguồn sang bucket đích.
+     * Dùng để archive bản PDF cũ sang document-versions trước khi ghi đè bản mới.
+     */
+    public void copyFile(String srcBucket, String srcObject, String destBucket, String destObject) {
+        try {
+            boolean found = minioClient.bucketExists(
+                    BucketExistsArgs.builder().bucket(destBucket).build());
+            if (!found) {
+                minioClient.makeBucket(
+                        MakeBucketArgs.builder().bucket(destBucket).build());
+            }
+
+            minioClient.copyObject(CopyObjectArgs.builder()
+                    .bucket(destBucket)
+                    .object(destObject)
+                    .source(CopySource.builder()
+                            .bucket(srcBucket)
+                            .object(srcObject)
+                            .build())
+                    .build());
+            log.info("Copied {} from {} to {}/{}", srcObject, srcBucket, destBucket, destObject);
+        } catch (Exception e) {
+            log.error("Error copying file in MinIO", e);
+            throw new RuntimeException("Error copying file in MinIO", e);
+        }
+    }
 }

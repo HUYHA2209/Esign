@@ -1,5 +1,6 @@
 package com.spring.esign.controller;
 
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +24,13 @@ import lombok.experimental.FieldDefaults;
 public class WebAuthnController {
 
     WebAuthnService webAuthnService;
+
+    @GetMapping("/status")
+    public ApiResponse<Boolean> getPasskeyStatus() {
+        return ApiResponse.<Boolean>builder()
+                .result(webAuthnService.getPasskeyStatus())
+                .build();
+    }
 
     @PostMapping("/register/start")
     public ApiResponse<WebAuthnRegistrationStartResponse> startRegistration() {

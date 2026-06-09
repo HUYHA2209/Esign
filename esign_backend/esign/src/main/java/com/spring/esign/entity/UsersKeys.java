@@ -49,6 +49,7 @@ public class UsersKeys {
     @Column(name = "algorithm", nullable = false)
     String algorithm;
 
+    // ID xác thực thiết bị
     @Column(name = "aaguid", length = 64)
     String aaguid;
 

@@ -99,6 +99,7 @@ export function useLoadDraft({
 
                                 allFields.push({
                                     id: `field_${f.fieldId}_${Date.now()}`,
+                                    serverFieldId: f.fieldId, // DB primary key for upsert tracking
                                     type: f.type || 'signature',
                                     page: f.page,
                                     fileIndex: docIdx,

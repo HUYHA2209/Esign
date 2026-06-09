@@ -10,7 +10,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 @Entity
-@Table(name = "SIGNATURE_PREPARES", uniqueConstraints = @UniqueConstraint(columnNames = {"signing_session_id"}))
+@Table(name = "SIGNATURE_PREPARES")
 @Data
 @Builder
 @NoArgsConstructor

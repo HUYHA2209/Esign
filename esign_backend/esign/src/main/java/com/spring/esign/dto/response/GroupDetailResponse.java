@@ -1,5 +1,6 @@
 package com.spring.esign.dto.response;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -18,5 +19,6 @@ public class GroupDetailResponse {
     String groupName;
     Integer currentStep;
     String groupStatus;
+    LocalDateTime expiresAt;
     List<DocumentDetailResponse> documents;
 }

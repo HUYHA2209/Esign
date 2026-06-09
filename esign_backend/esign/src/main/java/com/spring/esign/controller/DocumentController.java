@@ -1,5 +1,6 @@
 package com.spring.esign.controller;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 
@@ -10,13 +11,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.spring.esign.dto.request.SaveDraftDocumentRequest;
 import com.spring.esign.dto.request.SendDocumentRequest;
+import com.spring.esign.dto.request.UpdateDraftRequest;
 import com.spring.esign.dto.response.ApiResponse;
 import com.spring.esign.dto.response.DocumentResponse;
 import com.spring.esign.dto.response.GroupDetailResponse;
+import com.spring.esign.dto.response.GroupReceivedDetailResponse;
 import com.spring.esign.service.DocumentService;
 
 import lombok.AccessLevel;
@@ -33,16 +33,15 @@ public class DocumentController {
 
     DocumentService documentService;
 
-    @PostMapping(value = "/save-draft", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ApiResponse<Integer> saveDraftDocument(
-            @RequestParam(value = "files", required = false) List<MultipartFile> files,
-            @RequestPart("data") String data)
-            throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        SaveDraftDocumentRequest dataJson = mapper.readValue(data, SaveDraftDocumentRequest.class);
-        Integer groupId = documentService.saveDraftDocument(files, dataJson);
-        return ApiResponse.<Integer>builder().result(groupId).build();
+    @PostMapping(value = "/uploads-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<Integer> uploadDocuments(
+            @RequestParam("files") List<MultipartFile> files,
+            @RequestParam(value = "documentName", required = false) String groupName,
+            @RequestParam(value = "groupId", required = false) Integer groupId)
+            throws IOException {
+        return ApiResponse.<Integer>builder()
+                .result(documentService.uploadDocument(files, groupName, groupId))
+                .build();
     }
 
     @GetMapping("/get-document")
@@ -60,8 +59,20 @@ public class DocumentController {
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<Resource> downloadDocument(@PathVariable Integer id) {
-        InputStream resource = documentService.downloadDocument(id);
+    public ResponseEntity<Resource> downloadDocument(
+            @PathVariable Integer id, @RequestParam(value = "action", required = false) String action) {
+        boolean logAudit = "download".equalsIgnoreCase(action);
+        InputStream resource = documentService.downloadDocument(id, logAudit);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(new InputStreamResource(resource));
+    }
+
+    @GetMapping("/{id}/download-to-recipients")
+    public ResponseEntity<Resource> dowloadDocumentByRecipient(
+            @PathVariable Integer id, @RequestParam(value = "action", required = false) String action) {
+        boolean logAudit = "download".equalsIgnoreCase(action);
+        InputStream resource = documentService.downloadDocumentByRecipient(id, logAudit);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(new InputStreamResource(resource));
@@ -102,10 +113,33 @@ public class DocumentController {
         return ApiResponse.<String>builder().result("Delete successfully").build();
     }
 
+    @PostMapping("/groups/{groupId}/cancel")
+    public ApiResponse<Void> cancelGroupById(
+            @PathVariable Integer groupId,
+            @RequestBody(required = false) com.spring.esign.dto.request.CancelRequest request) {
+        documentService.cancelDocumentGroup(groupId, request);
+        return ApiResponse.<Void>builder().message("Cancel successfully").build();
+    }
+
     @GetMapping("/received")
     public ApiResponse<List<DocumentResponse>> getReceivedDocument() {
         return ApiResponse.<List<DocumentResponse>>builder()
                 .result(documentService.getReceivedDocument())
+                .build();
+    }
+
+    @GetMapping("/groups/{groupId}/received")
+    public ApiResponse<GroupReceivedDetailResponse> getGroupReceivedDetail(@PathVariable Integer groupId) {
+        return ApiResponse.<GroupReceivedDetailResponse>builder()
+                .result(documentService.getReceivedGroupDetail(groupId))
+                .build();
+    }
+
+    @PutMapping("/groups/{groupId}/update-draft")
+    public ApiResponse<Integer> updateDraft(
+            @PathVariable Integer groupId, @RequestBody UpdateDraftRequest updateDraftRequest) {
+        return ApiResponse.<Integer>builder()
+                .result(documentService.updateDraft(groupId, updateDraftRequest))
                 .build();
     }
 }

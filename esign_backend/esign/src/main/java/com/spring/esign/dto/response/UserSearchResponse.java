@@ -16,4 +16,22 @@ public class UserSearchResponse {
     String id;
     String email;
     String fullName;
+    java.util.List<String> accountNames;
+    java.util.List<WorkspaceInfo> workspaces;
+
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class WorkspaceInfo {
+        Long accountId;
+        String accountName;
+        String accountType;
+    }
+
+    public UserSearchResponse(String id, String email, String fullName) {
+        this.id = id;
+        this.email = email;
+        this.fullName = fullName;
+    }
 }

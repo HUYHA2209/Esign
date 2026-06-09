@@ -1,76 +1,87 @@
 import React from 'react';
 import {
     FileText, Users, CheckCircle2, Clock, TrendingUp,
-    MoreHorizontal, ArrowUpRight, FilePlus, UserPlus,
-    Activity, Zap, Star
+    ArrowUpRight, FilePlus, UserPlus,
+    Activity, Zap, ShieldCheck
 } from 'lucide-react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
 /* ── Stat Card ── */
-const StatCard = ({ icon: Icon, label, value, change, color }) => (
-    <div className={`relative bg-white rounded-2xl p-5 border border-slate-100 shadow-sm overflow-hidden group hover:shadow-md transition-all`}>
-        <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 opacity-10 ${color}`} />
-        <div className={`inline-flex p-2.5 rounded-xl mb-4 ${color} bg-opacity-10`}>
-            <Icon className={`w-5 h-5 ${color.replace('bg-', 'text-')}`} />
+const StatCard = ({ icon: Icon, label, value, change, color, index }) => (
+    <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.1 }}
+        className="relative bg-white rounded-[32px] p-8 shadow-premium border border-secondary-100 overflow-hidden group hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+    >
+        <div className={`absolute top-0 right-0 w-32 h-32 rounded-full -mr-12 -mt-12 opacity-5 ${color}`} />
+        <div className={`inline-flex p-4 rounded-2xl mb-6 shadow-sm ${color} bg-opacity-10`}>
+            <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
         </div>
-        <p className="text-2xl font-bold text-slate-800">{value}</p>
-        <p className="text-sm text-slate-500 mt-0.5">{label}</p>
-        {change && (
-            <span className="absolute bottom-4 right-4 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <TrendingUp className="w-3 h-3" />{change}
-            </span>
-        )}
-    </div>
+        <div className="flex items-end justify-between">
+            <div>
+                <p className="text-3xl font-bold text-secondary-900 font-display leading-none">{value}</p>
+                <p className="text-sm font-bold text-secondary-400 mt-2 uppercase tracking-widest">{label}</p>
+            </div>
+            {change && (
+                <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100 shadow-sm">
+                    <TrendingUp className="w-3.5 h-3.5" />{change}
+                </span>
+            )}
+        </div>
+    </motion.div>
 );
 
 /* ── Document Row ── */
 const DocRow = ({ name, status, date, assignee }) => {
     const statusStyle = {
-        'Chờ ký': 'bg-amber-50 text-amber-600',
-        'Hoàn tất': 'bg-emerald-50 text-emerald-600',
-        'Đã gửi': 'bg-blue-50 text-blue-600',
+        'Chờ ký': 'bg-amber-50 text-amber-600 border-amber-100',
+        'Hoàn tất': 'bg-emerald-50 text-emerald-600 border-emerald-100',
+        'Đã gửi': 'bg-primary-50 text-primary-600 border-primary-100',
     };
     return (
-        <div className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors cursor-pointer group">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                <FileText className="w-4 h-4 text-indigo-500" />
+        <div className="flex items-center gap-5 px-8 py-5 hover:bg-secondary-50 transition-all cursor-pointer group border-b border-secondary-50 last:border-0">
+            <div className="w-12 h-12 rounded-2xl bg-secondary-50 border border-secondary-100 flex items-center justify-center flex-shrink-0 group-hover:bg-white group-hover:shadow-md transition-all">
+                <FileText className="w-5 h-5 text-primary-600" />
             </div>
             <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800 truncate group-hover:text-indigo-600 transition-colors">{name}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{date}</p>
+                <p className="text-base font-bold text-secondary-900 truncate group-hover:text-primary-600 transition-colors font-display">{name}</p>
+                <p className="text-xs font-bold text-secondary-400 mt-1 uppercase tracking-wider">{date}</p>
             </div>
-            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyle[status] || 'bg-slate-100 text-slate-500'}`}>
+            <span className={`text-[10px] font-bold px-3 py-1.5 rounded-xl border uppercase tracking-wider ${statusStyle[status] || 'bg-secondary-50 text-secondary-500 border-secondary-200'}`}>
                 {status}
             </span>
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                {assignee}
+            <div className="w-10 h-10 rounded-2xl premium-gradient p-0.5 shadow-lg group-hover:scale-110 transition-transform flex-shrink-0">
+                <div className="w-full h-full rounded-[14px] bg-white flex items-center justify-center overflow-hidden">
+                    <span className="text-[10px] font-bold text-primary-600">{assignee}</span>
+                </div>
             </div>
         </div>
     );
 };
 
-/* ── Member Row ── */
+/* ── Member Card ── */
 const MemberCard = ({ name, role, avatar, color, docs }) => (
-    <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors">
-        <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white font-bold text-xs flex-shrink-0`}>
+    <div className="flex items-center gap-4 p-4 rounded-[24px] hover:bg-secondary-50 transition-all border border-transparent hover:border-secondary-100">
+        <div className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${color} flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-lg`}>
             {avatar}
         </div>
         <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-800 truncate">{name}</p>
-            <p className="text-xs text-slate-400">{role}</p>
+            <p className="text-sm font-bold text-secondary-900 truncate font-display">{name}</p>
+            <p className="text-[10px] font-bold text-secondary-400 uppercase tracking-widest">{role}</p>
         </div>
-        <span className="text-xs text-slate-400">{docs} tài liệu</span>
+        <div className="text-right">
+            <p className="text-xs font-bold text-primary-600">{docs}</p>
+            <p className="text-[10px] font-bold text-secondary-400 uppercase">Tài liệu</p>
+        </div>
     </div>
 );
 
 /* ── Main Component ── */
 const OrganizationOverview = () => {
-    const { orgUrl } = useParams();
+    const { orgUrl, orgName } = useOutletContext();
     const navigate = useNavigate();
-
-    const orgName = orgUrl
-        ? orgUrl.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-        : 'Tổ chức';
 
     const docs = [
         { name: 'Hợp đồng dịch vụ Q1/2025', status: 'Chờ ký', date: 'Hôm nay, 09:30', assignee: 'NV' },
@@ -88,93 +99,110 @@ const OrganizationOverview = () => {
     ];
 
     const activity = [
-        { icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-50', msg: '"Hợp đồng dịch vụ" đã được ký xong', time: '5 phút trước' },
-        { icon: UserPlus, color: 'text-indigo-500 bg-indigo-50', msg: 'Phạm Thị D vừa tham gia tổ chức', time: '1 giờ trước' },
-        { icon: FilePlus, color: 'text-blue-500 bg-blue-50', msg: 'Tài liệu mới "Biên bản bàn giao" được tạo', time: '3 giờ trước' },
-        { icon: Zap, color: 'text-amber-500 bg-amber-50', msg: '"NDA bảo mật" đã được gửi đến 3 người', time: 'Hôm qua' },
+        { icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-50 border-emerald-100', msg: '"Hợp đồng dịch vụ" đã được ký xong', time: '5 phút trước' },
+        { icon: UserPlus, color: 'text-primary-500 bg-primary-50 border-primary-100', msg: 'Phạm Thị D vừa tham gia tổ chức', time: '1 giờ trước' },
+        { icon: FilePlus, color: 'text-blue-500 bg-blue-50 border-blue-100', msg: 'Tài liệu mới "Biên bản bàn giao" được tạo', time: '3 giờ trước' },
+        { icon: Zap, color: 'text-amber-500 bg-amber-50 border-amber-100', msg: '"NDA bảo mật" đã được gửi đến 3 người', time: 'Hôm qua' },
     ];
 
     return (
-        <div className="space-y-7">
+        <div className="space-y-8 pb-10">
             {/* Page title */}
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-                    <p className="text-sm text-slate-400 mt-1">Tổng quan hoạt động của {orgName}</p>
+                    <h1 className="text-3xl font-bold text-secondary-900 font-display">Tổng quan hệ thống</h1>
+                    <p className="text-secondary-400 font-medium mt-1">Hoạt động mới nhất tại <span className="text-primary-600 font-bold">{orgName}</span></p>
                 </div>
-                <button
-                    onClick={() => navigate(`/o/${orgUrl}/documents`)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
-                >
-                    <FilePlus className="w-4 h-4" />
-                    Tạo tài liệu
-                </button>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard icon={Users} label="Thành viên" value="12" change="+2" color="bg-indigo-500" />
-                <StatCard icon={FileText} label="Tài liệu" value="48" change="+7" color="bg-blue-500" />
-                <StatCard icon={CheckCircle2} label="Đã ký xong" value="36" change="75%" color="bg-emerald-500" />
-                <StatCard icon={Clock} label="Chờ ký" value="8" color="bg-amber-500" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard icon={Users} label="Thành viên" value="12" change="+2" color="bg-primary-500" index={0} />
+                <StatCard icon={FileText} label="Tài liệu" value="48" change="+7" color="bg-blue-500" index={1} />
+                <StatCard icon={CheckCircle2} label="Đã hoàn tất" value="36" change="75%" color="bg-emerald-500" index={2} />
+                <StatCard icon={Clock} label="Đang chờ ký" value="08" color="bg-amber-500" index={3} />
             </div>
 
             {/* Main grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
                 {/* Recent documents */}
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                        <h2 className="text-sm font-semibold text-slate-800">Tài liệu gần đây</h2>
+                <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="lg:col-span-2 bg-white rounded-[32px] shadow-premium border border-secondary-100 overflow-hidden"
+                >
+                    <div className="flex items-center justify-between px-8 py-6 border-b border-secondary-50">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-secondary-50 rounded-xl flex items-center justify-center text-secondary-400">
+                                <Activity className="w-5 h-5" />
+                            </div>
+                            <h2 className="text-xl font-bold text-secondary-900 font-display">Tài liệu gần đây</h2>
+                        </div>
                         <button
                             onClick={() => navigate(`/o/${orgUrl}/documents`)}
-                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors"
+                            className="px-4 py-2 text-xs font-bold text-primary-600 hover:bg-primary-50 rounded-xl flex items-center gap-2 transition-all uppercase tracking-widest"
                         >
-                            Xem tất cả <ArrowUpRight className="w-3.5 h-3.5" />
+                            Xem tất cả <ArrowUpRight className="w-4 h-4" />
                         </button>
                     </div>
-                    <div className="divide-y divide-slate-50">
+                    <div className="divide-y divide-secondary-50">
                         {docs.map((d, i) => <DocRow key={i} {...d} />)}
                     </div>
-                </div>
+                </motion.div>
 
                 {/* Right column */}
-                <div className="space-y-5">
+                <div className="space-y-8">
                     {/* Members */}
-                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                            <h2 className="text-sm font-semibold text-slate-800">Thành viên</h2>
+                    <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="bg-white rounded-[32px] shadow-premium border border-secondary-100 overflow-hidden"
+                    >
+                        <div className="flex items-center justify-between px-8 py-6 border-b border-secondary-50">
+                            <h2 className="text-lg font-bold text-secondary-900 font-display">Thành viên</h2>
                             <button
                                 onClick={() => navigate(`/o/${orgUrl}/members`)}
-                                className="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors"
+                                className="w-10 h-10 bg-secondary-50 rounded-xl flex items-center justify-center text-secondary-400 hover:text-primary-600 hover:bg-primary-50 transition-all"
                             >
-                                Quản lý <ArrowUpRight className="w-3.5 h-3.5" />
+                                <ArrowUpRight className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="p-3 space-y-1">
+                        <div className="p-4 space-y-2">
                             {members.map((m, i) => <MemberCard key={i} {...m} />)}
                         </div>
-                    </div>
+                        <div className="px-8 pb-6">
+                            <button className="w-full py-3 bg-secondary-50 text-secondary-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-secondary-100 transition-all border border-secondary-100">Mời thành viên</button>
+                        </div>
+                    </motion.div>
 
                     {/* Activity feed */}
-                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                        <div className="px-5 py-4 border-b border-slate-100">
-                            <h2 className="text-sm font-semibold text-slate-800">Hoạt động</h2>
+                    <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.1 }}
+                        className="bg-white rounded-[32px] shadow-premium border border-secondary-100 overflow-hidden"
+                    >
+                        <div className="px-8 py-6 border-b border-secondary-50 flex items-center gap-3">
+                            <div className="w-2 h-2 rounded-full bg-primary-600 animate-pulse"></div>
+                            <h2 className="text-lg font-bold text-secondary-900 font-display">Luồng hoạt động</h2>
                         </div>
-                        <div className="p-4 space-y-3">
+                        <div className="p-6 space-y-6">
                             {activity.map((a, i) => (
-                                <div key={i} className="flex items-start gap-3">
-                                    <div className={`p-2 rounded-lg flex-shrink-0 ${a.color}`}>
-                                        <a.icon className="w-3.5 h-3.5" />
+                                <div key={i} className="flex items-start gap-4 group">
+                                    <div className={`p-3 rounded-2xl flex-shrink-0 border transition-all group-hover:scale-110 ${a.color}`}>
+                                        <a.icon className="w-4 h-4" />
                                     </div>
                                     <div>
-                                        <p className="text-xs text-slate-700 leading-snug">{a.msg}</p>
-                                        <p className="text-[10px] text-slate-400 mt-1">{a.time}</p>
+                                        <p className="text-sm font-medium text-secondary-800 leading-relaxed group-hover:text-primary-600 transition-colors">{a.msg}</p>
+                                        <p className="text-[10px] font-bold text-secondary-400 mt-2 uppercase tracking-widest flex items-center gap-2">
+                                            <Clock className="w-3 h-3" /> {a.time}
+                                        </p>
                                     </div>
                                 </div>
                             ))}
                         </div>
-                    </div>
+                    </motion.div>
                 </div>
             </div>
         </div>

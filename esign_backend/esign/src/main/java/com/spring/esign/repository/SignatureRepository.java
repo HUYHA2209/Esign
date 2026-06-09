@@ -11,4 +11,6 @@ import com.spring.esign.entity.User;
 @Repository
 public interface SignatureRepository extends JpaRepository<Signatures, Long> {
     Optional<Signatures> findByUser(User user);
+
+    Optional<Signatures> findByUserId(String id);
 }

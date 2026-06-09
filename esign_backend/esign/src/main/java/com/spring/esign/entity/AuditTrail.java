@@ -66,9 +66,6 @@ public class AuditTrail {
     @Column(name = "digital_signature", columnDefinition = "TEXT")
     String digitalSignature;
 
-    @Column(name = "digital_signature_hash")
-    String digitalSignatureHash;
-
     @Column(name = "message_to_sign_hash")
     String messageToSignHash;
 
@@ -82,11 +79,6 @@ public class AuditTrail {
 
     @Column(name = "timestamp", updatable = false)
     LocalDateTime timestamp;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by")
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password", "forgotPassword"})
-    User createdBy;
 
     @PrePersist
     protected void onCreate() {

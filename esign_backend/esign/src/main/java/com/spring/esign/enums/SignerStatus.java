@@ -4,5 +4,10 @@ public enum SignerStatus {
     WAITING,
     VIEWED,
     SIGNED,
-    DECLINED
+    DECLINED,
+    EXPIRED;
+
+    public boolean canSign() {
+        return this == WAITING || this == VIEWED;
+    }
 }

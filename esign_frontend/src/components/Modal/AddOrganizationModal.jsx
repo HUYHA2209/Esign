@@ -1,97 +1,130 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Building2, Globe, Shield } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const AddOrganizationModal = ({ isOpen, onClose, onSubmit, isLoading = false }) => {
     const [orgName, setOrgName] = useState('');
     const [orgUrl, setOrgUrl] = useState('');
-
-    if (!isOpen) return null;
+    const [accountType, setAccountType] = useState('ORGANIZATION');
 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (orgName.trim() && orgUrl.trim() && !isLoading) {
-            onSubmit({ name: orgName, url: orgUrl });
+            onSubmit({ name: orgName, url: orgUrl, type: 'ORGANIZATION' });
+            // Reset fields on success
+            setOrgName('');
+            setOrgUrl('');
         }
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            {/* Backdrop with blur */}
-            <div
-                className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
-                onClick={onClose}
-            ></div>
-
-            {/* Modal Content */}
-            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100 opacity-100">
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
-                    <h3 className="text-lg font-semibold text-gray-900">Thêm tổ chức mới</h3>
-                    <button
+        <AnimatePresence>
+            {isOpen && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                    {/* Backdrop */}
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 bg-secondary-950/40 backdrop-blur-sm"
                         onClick={onClose}
-                        className="text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-full p-1 transition-colors"
+                    />
+
+                    {/* Modal Content */}
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                        transition={{ type: "spring", duration: 0.4 }}
+                        className="relative bg-white rounded-[32px] shadow-premium border border-secondary-100 w-full max-w-md overflow-hidden z-10"
                     >
-                        <X className="w-5 h-5" />
-                    </button>
+                        {/* Header */}
+                        <div className="px-8 pt-8 pb-4 flex items-center justify-between border-b border-secondary-50">
+                            <div>
+                                <h3 className="text-xl font-bold text-secondary-900 font-display">Tạo không gian mới</h3>
+                                <p className="text-xs text-secondary-400 font-medium mt-0.5">Xây dựng không gian làm việc số cho bạn hoặc doanh nghiệp</p>
+                            </div>
+                            <button
+                                onClick={onClose}
+                                className="text-secondary-400 hover:text-secondary-600 hover:bg-secondary-50 rounded-xl p-2 transition-all"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                            {/* Removed Account Type Selection */}
+
+                            {/* Org Name */}
+                            <div className="space-y-2">
+                                <label htmlFor="orgName" className="text-[10px] font-bold text-secondary-400 uppercase tracking-[0.2em] px-1">
+                                    Tên tổ chức
+                                </label>
+                                <div className="relative group">
+                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-secondary-400 group-focus-within:text-primary-500 transition-colors">
+                                        <Building2 className="w-5 h-5" />
+                                    </div>
+                                    <input
+                                        id="orgName"
+                                        type="text"
+                                        autoFocus
+                                        value={orgName}
+                                        onChange={(e) => setOrgName(e.target.value)}
+                                        className="w-full pl-12 pr-4 py-3.5 bg-secondary-50 border border-secondary-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-primary-500/10 focus:border-primary-500 outline-none transition-all duration-300 font-medium text-sm text-secondary-800 placeholder-secondary-400"
+                                        placeholder="Ví dụ: Công ty TNHH DigiSign"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Org URL */}
+                            <div className="space-y-2">
+                                <label htmlFor="orgUrl" className="text-[10px] font-bold text-secondary-400 uppercase tracking-[0.2em] px-1 block">
+                                    Đường dẫn URL
+                                </label>
+                                <div className="relative group">
+                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-secondary-400 group-focus-within:text-primary-500 transition-colors">
+                                        <Globe className="w-5 h-5" />
+                                    </div>
+                                    <input
+                                        id="orgUrl"
+                                        type="text"
+                                        value={orgUrl}
+                                        onChange={(e) => setOrgUrl(e.target.value)}
+                                        className="w-full pl-12 pr-4 py-3.5 bg-secondary-50 border border-secondary-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-primary-500/10 focus:border-primary-500 outline-none transition-all duration-300 font-medium text-sm text-secondary-800 placeholder-secondary-400"
+                                        placeholder="ví-du: my-workspace"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="flex items-center justify-end gap-3 pt-4 border-t border-secondary-50">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="px-5 py-3 text-sm font-bold text-secondary-500 hover:text-secondary-800 transition-colors"
+                                >
+                                    Hủy
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!orgName.trim() || !orgUrl.trim() || isLoading}
+                                    className="px-6 py-3.5 text-sm font-bold text-white premium-gradient rounded-2xl shadow-lg shadow-primary-500/25 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2"
+                                >
+                                    {isLoading && (
+                                        <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                        </svg>
+                                    )}
+                                    {isLoading ? 'Đang tạo...' : 'Tạo không gian'}
+                                </button>
+                            </div>
+                        </form>
+                    </motion.div>
                 </div>
-
-                {/* Body */}
-                <form onSubmit={handleSubmit} className="p-6">
-                    <div className="mb-4">
-                        <label htmlFor="orgName" className="block text-sm font-medium text-gray-700 mb-2">
-                            Tên tổ chức
-                        </label>
-                        <input
-                            id="orgName"
-                            type="text"
-                            autoFocus
-                            value={orgName}
-                            onChange={(e) => setOrgName(e.target.value)}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                            placeholder="Nhập tên tổ chức..."
-                        />
-                    </div>
-
-                    <div className="mb-4">
-                        <label htmlFor="orgUrl" className="block text-sm font-medium text-gray-700 mb-2">
-                            Đường dẫn URL
-                        </label>
-                        <input
-                            id="orgUrl"
-                            type="text"
-                            value={orgUrl}
-                            onChange={(e) => setOrgUrl(e.target.value)}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                            placeholder="Nhập đường dẫn URL (ví dụ: my-company)"
-                        />
-                    </div>
-
-                    {/* Footer */}
-                    <div className="flex items-center justify-end gap-3 mt-6">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                        >
-                            Hủy
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={!orgName.trim() || !orgUrl.trim() || isLoading}
-                            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm flex items-center gap-2"
-                        >
-                            {isLoading && (
-                                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                                </svg>
-                            )}
-                            {isLoading ? 'Đang tạo...' : 'Thêm tổ chức'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+            )}
+        </AnimatePresence>
     );
 };
 

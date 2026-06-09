@@ -37,7 +37,11 @@ public class Account {
     @Column(name = "account_type", nullable = false)
     AccountType accountType;
 
+    @Column(name = "is_deleted")
+    @Builder.Default
+    boolean isDeleted = false;
+
     // Danh sách thành viên trong Account này
-    @OneToMany(mappedBy = "account", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "account", fetch = FetchType.LAZY)
     List<AccountMember> members;
 }

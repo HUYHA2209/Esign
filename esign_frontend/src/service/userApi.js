@@ -30,6 +30,18 @@ export const getWorkSpaces = async () => {
     return response.data;
 };
 
+// switch workSpace
+export const switchWorkSpace = async (accountId) => {
+    const response = await apiClient.post("/auth/workspace", { accountId });
+    return response.data;
+};
+
+// delete workSpace (Backend placeholder)
+export const deleteWorkSpace = async (accountId) => {
+    const response = await apiClient.delete(`/auth/workspace/${accountId}`);
+    return response.data;
+};
+
 // Logout
 export const logoutUser = async () => {
     const token = sessionStorage.getItem("token");

@@ -1,5 +1,6 @@
 package com.spring.esign.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,7 +12,11 @@ import com.spring.esign.entity.SigningSession;
 @Repository
 public interface SignaturePrepareRepository extends JpaRepository<SignaturePrepare, Long> {
 
-    Optional<SignaturePrepare> findBySigningSession(SigningSession signingSession);
+    // Tìm tất cả prepares trong 1 session (group signing: N prepares per session)
+    List<SignaturePrepare> findBySigningSession(SigningSession signingSession);
 
-    Optional<SignaturePrepare> findBySigningSession_SessionId(Integer sessionId);
+    List<SignaturePrepare> findBySigningSession_SessionId(String sessionId);
+
+    Optional<SignaturePrepare> findBySigningSessionAndDocument_DocumentId(
+            SigningSession signingSession, Integer documentId);
 }

@@ -42,19 +42,19 @@ public class AccountMember {
 
     // --- QUYỀN HẠN (PERMISSIONS) ---
 
-    @Column(name = "can_upload")
+    @Column(name = "can_upload", columnDefinition = "BIT")
     @Builder.Default
     Boolean canUpload = false;
 
-    @Column(name = "can_sign")
+    @Column(name = "can_sign", columnDefinition = "BIT")
     @Builder.Default
     Boolean canSign = false;
 
-    @Column(name = "can_view_docs")
+    @Column(name = "can_view_docs", columnDefinition = "BIT")
     @Builder.Default
     Boolean canViewDocs = false;
 
-    @Column(name = "can_invite")
+    @Column(name = "can_invite", columnDefinition = "BIT")
     @Builder.Default
     Boolean canInvite = false;
 }

@@ -20,8 +20,8 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: "hahuy3182004@gmail.com "
-    password: ""
+    username: "hah3182004@gmail.com"
+    password: "zxdn nfgx ihda tuai"
     properties:
       mail:
         smtp:
@@ -40,3 +40,15 @@ minio:
   url: http://localhost:9000
   access-key: minioadmin
   secret-key: minioadmin
+
+platform:
+  signature:
+    keystore:
+      path: E:/sercurity/certificate.p12
+      password: 123456
+      alias: Esign_App # (Thường là tên mặc định khi tạo chứng chỉ)
+
+app:
+  cron:
+    # Ví dụ: Chạy vào lúc 00:00:00 mỗi ngày
+    invitation-expiration-check: "0 0 7 * * *"

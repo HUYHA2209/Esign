@@ -24,7 +24,26 @@ public enum ErrorCode {
     INVALID_REQUEST(1014, "Yêu cầu không hợp lệ", HttpStatus.BAD_REQUEST),
     DOCUMENT_NOT_FOUND(1015, "Không tìm thấy tài liệu", HttpStatus.NOT_FOUND),
     INVALID_SIGNER(1016, "Người nhận không hợp lệ", HttpStatus.BAD_REQUEST),
-    MISSING_SIGNATURE(1017, "Tài liệu hoặc người nhận đang thiếu trường chữ ký", HttpStatus.BAD_REQUEST);
+    MISSING_SIGNATURE(1017, "Tài liệu hoặc người nhận đang thiếu trường chữ ký", HttpStatus.BAD_REQUEST),
+    ACCOUNT_MEMBER_NOT_FOUND(1018, "Khong tim thay thong tin tai khoan", HttpStatus.NOT_FOUND),
+    NOT_YOU_TO_SIGN(1019, "Chưa đến lượt bạn", HttpStatus.FORBIDDEN),
+    SIGNATURE_NOT_FOUND(1020, "Ban chua co chu ki hay tao va thu lai", HttpStatus.NOT_FOUND),
+    CREDENTIAL_NOT_FOUND(1021, "Không tìm thấy chứng thực hợp lệ", HttpStatus.NOT_FOUND),
+    AUDITCHAIN_NOT_CREATE(1022, "AuditChain chua dc tao", HttpStatus.NOT_FOUND),
+    INVALID_SIGNING_ORDER(1023, "Chưa đến lượt kí", HttpStatus.FORBIDDEN),
+    USER_SIGNED(1024, "Người dùng đã từng kí tài liệu", HttpStatus.BAD_REQUEST),
+    ACC_URL_EXISTS(1025, "URL nayf đã tồn taị vui lòng nhập url khác", HttpStatus.IM_USED),
+    ORGINVITATION_NOT_FOUND(1026, "Không tìm thấy thư mời từ tổ chức", HttpStatus.NOT_FOUND),
+    INVITATION_ALREADY_EXISTS(1027, "Người này đang nhận được thư mời", HttpStatus.BAD_REQUEST),
+    USER_ALREADY_MEMBER(1028, "Người này đã tồn tại trong tổ chức", HttpStatus.BAD_REQUEST),
+    ORG_NOT_FOUND(1029, "Không tìm thấy tổ chức", HttpStatus.NOT_FOUND),
+    INVITATION_IS_EXPIRED(1030, "Thư mời hết hạn", HttpStatus.NOT_FOUND),
+    CANNOT_REMOVE_LAST_ADMIN(1031, "Không thể xóa hoặc hạ quyền quản trị viên cuối cùng", HttpStatus.FORBIDDEN),
+    MEMBER_NOT_FOUND(1032, "Không tìm thấy thành viên", HttpStatus.NOT_FOUND),
+    DOCUMENT_CANNOT_CANCEL(1033, "Tài liệu không thể hủy ở trạng thái hiện tại", HttpStatus.CONFLICT),
+    DOCUMENT_CANNOT_DELETE(
+            1034, "Không thể xóa tài liệu đang trong quá trình ký hoặc đã hoàn tất", HttpStatus.CONFLICT),
+    ORGANIZATION_DELETED(1036, "Tổ chức này đã bị xóa hoặc không hoạt động", HttpStatus.FORBIDDEN);
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
         this.code = code;

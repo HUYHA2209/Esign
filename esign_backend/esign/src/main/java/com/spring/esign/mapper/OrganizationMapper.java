@@ -12,5 +12,6 @@ public interface OrganizationMapper {
     @Mapping(target = "owner", ignore = true)
     @Mapping(target = "accountType", ignore = true)
     @Mapping(target = "members", ignore = true)
+    @Mapping(target = "isDeleted", ignore = true)
     Account toAccount(OrganizationCreationRequest request);
 }

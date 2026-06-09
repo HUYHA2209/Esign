@@ -4,7 +4,9 @@ public enum DocumentStatus {
     DRAFT("draft"),
     PENDING("pending"),
     COMPLETED("completed"),
-    DECLINED("declined");
+    DECLINED("declined"),
+    EXPIRED("expired"),
+    VOID("void");
 
     private final String value;
 

@@ -6,4 +6,6 @@ import com.spring.esign.entity.DocumentGroup;
 
 public interface DocumentGroupRepository extends JpaRepository<DocumentGroup, Integer> {
     DocumentGroup findByGroupId(Integer groupId);
+
+    DocumentGroup findByGroupIdAndAccount_AccountId(Integer groupId, Long accountId);
 }

@@ -34,9 +34,8 @@ public class Signatures {
     @Column(name = "signature_type", nullable = false)
     SignatureType signatureType;
 
-    @Lob
-    @Column(name = "image_base64", columnDefinition = "LONGTEXT")
-    String imageBase64;
+    @Column(name = "image_url")
+    String imageUrl;
 
     @Column(name = "image_hash")
     String imageHash;

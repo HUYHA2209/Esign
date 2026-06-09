@@ -24,6 +24,10 @@ public class DocumentGroup {
     @Column(name = "group_name")
     String groupName;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "account_id", nullable = false)
+    Account account;
+
     @Column(name = "created_at")
     LocalDateTime createdAt;
 
@@ -34,6 +38,9 @@ public class DocumentGroup {
     @Column(name = "group_status")
     @Builder.Default
     String gr_status = "DRAFT";
+
+    @Column(name = "expires_at")
+    LocalDateTime expiresAt;
 
     @ToString.Exclude
     @OneToMany(mappedBy = "documentGroup")

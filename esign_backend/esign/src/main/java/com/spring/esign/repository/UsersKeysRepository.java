@@ -1,5 +1,6 @@
 package com.spring.esign.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,7 +13,7 @@ import com.spring.esign.entity.UsersKeys;
 public interface UsersKeysRepository extends JpaRepository<UsersKeys, Long> {
     Optional<UsersKeys> findByCredentialId(String credentialId);
 
-    Optional<UsersKeys> findByUserAndIsActiveTrue(User user);
+    List<UsersKeys> findByUserAndIsActiveTrue(User user);
 
-    java.util.List<UsersKeys> findByUser(User user);
+    List<UsersKeys> findByUser(User user);
 }

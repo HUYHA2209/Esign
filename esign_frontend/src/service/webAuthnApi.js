@@ -1,5 +1,10 @@
 import apiClient from "./apiClient";
 
+export const getPasskeyStatus = async () => {
+    const response = await apiClient.get("/webauthn/status");
+    return response.data;
+};
+
 export const startRegistration = async () => {
     const response = await apiClient.post("/webauthn/register/start");
     return response.data;

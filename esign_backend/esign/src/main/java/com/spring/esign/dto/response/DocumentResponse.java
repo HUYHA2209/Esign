@@ -25,4 +25,6 @@ public class DocumentResponse {
     String uploadedBy; // Full name of uploader
     String recipient; // Placeholder for recipient info if needed
     long fileCount; // useful for grouping
+    LocalDateTime expiresAt;
+    String signerStatus; // Trạng thái của người dùng hiện tại đối với tài liệu (SIGNED, DECLINED, PENDING, etc.)
 }

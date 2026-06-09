@@ -35,6 +35,11 @@ public class DocumentSigner {
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password", "forgotPassword"})
     User user;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "account_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    Account account;
+
     @Column(name = "signer_email", nullable = false, length = 150)
     String signerEmail;
 
@@ -81,9 +86,6 @@ public class DocumentSigner {
     @Lob
     @Column(name = "digital_signature", columnDefinition = "TEXT")
     String digitalSignature;
-
-    @Column(name = "digital_signature_hash")
-    String digitalSignatureHash;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "signature_format")
