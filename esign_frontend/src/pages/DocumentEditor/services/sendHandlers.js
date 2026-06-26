@@ -13,7 +13,8 @@ export async function sendDocumentFlow({
     toast,
     navigate,
     setIsSending,
-    orgUrl
+    orgUrl,
+    expiresAt
 }) {
     setIsSending(true);
     try {
@@ -23,12 +24,13 @@ export async function sendDocumentFlow({
             message: 'Vui lòng xem và ký tài liệu này.',
             recipients,
             fields,
-            enableSigningOrder
+            enableSigningOrder,
+            expiresAt
         });
 
         // normalize fontSize into each field
         payload.signers.forEach(s => {
-            s.fields = s.fields.map(f => ({ ...f, fontSize: signatureFontSize }));
+            s.fields = s.fields.map(f => ({ ...f, fontSize: f.fontSize || signatureFontSize || 14 }));
         });
 
         await sendDocument(id, payload);

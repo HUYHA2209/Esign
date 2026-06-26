@@ -21,6 +21,8 @@ public class AuditTrailResponse {
     String pdfHashBefore;
     String pdfHashAfter;
     String credentialId;
+    String digitalSignature;
+    String messageToSignHash;
     String keyAlgorithm;
     LocalDateTime timestamp;
 }

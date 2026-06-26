@@ -14,6 +14,8 @@ public interface AuditTrailRepository extends JpaRepository<AuditTrail, Long> {
 
     List<AuditTrail> findByDocument_DocumentIdOrderByTimestampAsc(Integer documentId);
 
+    List<AuditTrail> findTop10ByDocument_Account_AccountIdOrderByTimestampDesc(Long accountId);
+
     @Modifying
     @Transactional
     void deleteByDocument_DocumentId(Integer documentId);

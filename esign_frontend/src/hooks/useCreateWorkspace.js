@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { createOrganization } from '../service/organizationApi';
+import { switchWorkSpace } from '../service/userApi';
 
 export const useCreateWorkspace = (onSuccessCallback) => {
     const navigate = useNavigate();
@@ -17,9 +18,23 @@ export const useCreateWorkspace = (onSuccessCallback) => {
 
         setIsCreating(true);
         try {
-            await createOrganization(payload);
+            const res = await createOrganization(payload);
+            const newAccountId = res?.result;
+
             toast.success(`Không gian "${payload.accountName}" đã được tạo thành công!`);
             setShowAddOrgModal(false);
+            
+            // Tự động chuyển đổi session token sang tổ chức mới
+            if (newAccountId) {
+                try {
+                    const switchRes = await switchWorkSpace(newAccountId);
+                    if (switchRes && switchRes.result) {
+                        sessionStorage.setItem('token', switchRes.result.token);
+                    }
+                } catch (switchError) {
+                    console.error('Không thể tự động chuyển không gian làm việc', switchError);
+                }
+            }
             
             if (onSuccessCallback) {
                 onSuccessCallback(payload);

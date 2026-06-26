@@ -5,7 +5,7 @@ import { Mail, UserPlus, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { inviteMember } from '../../service/organizationApi';
 
-const InviteMemberModal = ({ isOpen, onClose, orgId }) => {
+const InviteMemberModal = ({ isOpen, onClose, orgId, inviterRole = 'MEMBER', inviterPermissions = {} }) => {
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('member');
     const [permissions, setPermissions] = useState({
@@ -113,7 +113,7 @@ const InviteMemberModal = ({ isOpen, onClose, orgId }) => {
                             className="w-full bg-secondary-50 border border-secondary-100 text-secondary-900 font-bold text-sm rounded-2xl px-5 py-4 focus:ring-4 focus:ring-primary-500/10 focus:border-primary-500 outline-none appearance-none cursor-pointer"
                         >
                             <option value="member">Thành viên</option>
-                            <option value="admin">Quản trị viên</option>
+                            <option value="admin" disabled={inviterRole !== 'ADMIN'}>Quản trị viên</option>
                         </select>
                     </div>
 
@@ -128,20 +128,20 @@ const InviteMemberModal = ({ isOpen, onClose, orgId }) => {
                                 <div className="space-y-3 pt-2">
                                     <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-widest px-1">Quyền hạn (Tùy chỉnh)</label>
                                     <div className="grid grid-cols-2 gap-3 bg-secondary-50/50 p-4 rounded-2xl border border-secondary-100">
-                                        <label className="flex items-center gap-3 cursor-pointer group">
-                                            <input type="checkbox" checked={permissions.canViewDocs} onChange={e => setPermissions({...permissions, canViewDocs: e.target.checked})} className="w-4 h-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500" />
+                                        <label className={`flex items-center gap-3 cursor-pointer group ${inviterRole !== 'ADMIN' && !inviterPermissions.canViewDocs ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            <input type="checkbox" disabled={inviterRole !== 'ADMIN' && !inviterPermissions.canViewDocs} checked={permissions.canViewDocs} onChange={e => setPermissions({...permissions, canViewDocs: e.target.checked})} className="w-4 h-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500 disabled:opacity-50" />
                                             <span className="text-xs font-bold text-secondary-700 group-hover:text-primary-600">Xem tài liệu</span>
                                         </label>
-                                        <label className="flex items-center gap-3 cursor-pointer group">
-                                            <input type="checkbox" checked={permissions.canUpload} onChange={e => setPermissions({...permissions, canUpload: e.target.checked})} className="w-4 h-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500" />
+                                        <label className={`flex items-center gap-3 cursor-pointer group ${inviterRole !== 'ADMIN' && !inviterPermissions.canUpload ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            <input type="checkbox" disabled={inviterRole !== 'ADMIN' && !inviterPermissions.canUpload} checked={permissions.canUpload} onChange={e => setPermissions({...permissions, canUpload: e.target.checked})} className="w-4 h-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500 disabled:opacity-50" />
                                             <span className="text-xs font-bold text-secondary-700 group-hover:text-primary-600">Upload tài liệu</span>
                                         </label>
-                                        <label className="flex items-center gap-3 cursor-pointer group">
-                                            <input type="checkbox" checked={permissions.canSign} onChange={e => setPermissions({...permissions, canSign: e.target.checked})} className="w-4 h-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500" />
+                                        <label className={`flex items-center gap-3 cursor-pointer group ${inviterRole !== 'ADMIN' && !inviterPermissions.canSign ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            <input type="checkbox" disabled={inviterRole !== 'ADMIN' && !inviterPermissions.canSign} checked={permissions.canSign} onChange={e => setPermissions({...permissions, canSign: e.target.checked})} className="w-4 h-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500 disabled:opacity-50" />
                                             <span className="text-xs font-bold text-secondary-700 group-hover:text-primary-600">Ký tài liệu</span>
                                         </label>
-                                        <label className="flex items-center gap-3 cursor-pointer group">
-                                            <input type="checkbox" checked={permissions.canInvite} onChange={e => setPermissions({...permissions, canInvite: e.target.checked})} className="w-4 h-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500" />
+                                        <label className={`flex items-center gap-3 cursor-pointer group ${inviterRole !== 'ADMIN' && !inviterPermissions.canInvite ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            <input type="checkbox" disabled={inviterRole !== 'ADMIN' && !inviterPermissions.canInvite} checked={permissions.canInvite} onChange={e => setPermissions({...permissions, canInvite: e.target.checked})} className="w-4 h-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500 disabled:opacity-50" />
                                             <span className="text-xs font-bold text-secondary-700 group-hover:text-primary-600">Mời thành viên</span>
                                         </label>
                                     </div>

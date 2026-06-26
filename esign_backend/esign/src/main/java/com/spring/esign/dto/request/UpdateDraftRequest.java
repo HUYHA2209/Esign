@@ -15,7 +15,7 @@ public class UpdateDraftRequest {
     Integer currentStep;
     Boolean enableSigningOrder;
     List<UpsertSignerRequest> upsertSigners; // Signers to create/update
-    List<String> deletedSignerEmails; // Signer emails to remove
+    List<Integer> deletedDocSignerIds; // Signer IDs to remove
     List<UpsertFieldRequest> upsertFields; // Fields to create/update
     List<Integer> deletedFieldIds; // Field DB IDs to remove
 }

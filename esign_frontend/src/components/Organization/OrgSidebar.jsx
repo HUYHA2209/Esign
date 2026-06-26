@@ -11,6 +11,12 @@ const OrgSidebar = ({ orgUrl, orgName }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const [currentRole, setCurrentRole] = React.useState(null);
+    const [permissions, setPermissions] = React.useState({
+        canInvite: false,
+        canSign: false,
+        canUpload: false,
+        canViewDocs: false
+    });
 
     React.useEffect(() => {
         if (!orgUrl) return;
@@ -19,13 +25,23 @@ const OrgSidebar = ({ orgUrl, orgName }) => {
                 const res = await getWorkSpaces();
                 if (res && res.result) {
                     const ws = res.result.find(w => w.accountUrl === orgUrl);
-                    if (ws) setCurrentRole(ws.role);
+                    if (ws) {
+                        setCurrentRole(ws.role);
+                        setPermissions({
+                            canInvite: ws.canInvite,
+                            canSign: ws.canSign,
+                            canUpload: ws.canUpload,
+                            canViewDocs: ws.canViewDocs
+                        });
+                    }
                 }
             } catch (err) {
                 console.error('Failed to fetch workspace role in sidebar', err);
             }
         };
         fetchRole();
+        // Force HMR update
+        console.log("OrgSidebar rendered with role:", currentRole);
     }, [orgUrl]);
 
     const navGroups = [

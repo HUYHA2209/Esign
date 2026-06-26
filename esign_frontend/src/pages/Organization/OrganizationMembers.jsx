@@ -247,55 +247,40 @@ const OrganizationMembers = () => {
                                             <span className="text-sm font-medium text-secondary-600">{m.joinedAt}</span>
                                         </td>
                                         <td className="px-8 py-5 text-right">
-                                            {m.role !== 'ADMIN' && (
+                                            {m.role !== 'ADMIN' && currentRole === 'ADMIN' && (
                                                 <div className="relative inline-block text-left">
-                                                    {currentRole === 'ADMIN' ? (
-                                                        <>
-                                                            <button 
-                                                                onClick={() => setOpenMenuId(openMenuId === m.id ? null : m.id)}
-                                                                className="w-10 h-10 bg-white border border-secondary-200 rounded-xl flex items-center justify-center text-secondary-400 hover:text-primary-600 hover:border-primary-200 hover:shadow-md transition-all"
+                                                    <button 
+                                                        onClick={() => setOpenMenuId(openMenuId === m.id ? null : m.id)}
+                                                        className="w-10 h-10 bg-white border border-secondary-200 rounded-xl flex items-center justify-center text-secondary-400 hover:text-primary-600 hover:border-primary-200 hover:shadow-md transition-all"
+                                                    >
+                                                        <MoreVertical className="w-5 h-5" />
+                                                    </button>
+                                                    
+                                                    <AnimatePresence>
+                                                        {openMenuId === m.id && (
+                                                            <motion.div 
+                                                                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                                className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-2xl border border-secondary-100 z-50 py-2 overflow-hidden"
                                                             >
-                                                                <MoreVertical className="w-5 h-5" />
-                                                            </button>
-                                                            
-                                                            <AnimatePresence>
-                                                                {openMenuId === m.id && (
-                                                                    <motion.div 
-                                                                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                                        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                                        className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl shadow-2xl border border-secondary-100 z-50 py-2 overflow-hidden"
-                                                                    >
-                                                                        <button 
-                                                                            onClick={() => {
-                                                                                setEditingMember(m);
-                                                                                setIsEditModalOpen(true);
-                                                                                setOpenMenuId(null);
-                                                                            }} 
-                                                                            className="w-full flex items-center gap-3 px-5 py-3 text-sm font-bold text-secondary-700 hover:bg-primary-50 hover:text-primary-600 transition-colors"
-                                                                        >
-                                                                            <Shield className="w-4 h-4" /> Xem và sửa quyền
-                                                                        </button>
-                                                                        <div className="border-t border-secondary-100 my-2" />
-                                                                        <button onClick={() => handleRemoveMember(m.id)} className="w-full flex items-center gap-3 px-5 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors">
-                                                                            <UserX className="w-4 h-4" /> Xóa khỏi tổ chức
-                                                                        </button>
-                                                                    </motion.div>
-                                                                )}
-                                                            </AnimatePresence>
-                                                        </>
-                                                    ) : (
-                                                        <button 
-                                                            onClick={() => {
-                                                                setEditingMember(m);
-                                                                setIsEditModalOpen(true);
-                                                            }}
-                                                            title="Xem quyền"
-                                                            className="w-10 h-10 bg-white border border-secondary-200 rounded-xl flex items-center justify-center text-secondary-400 hover:text-primary-600 hover:border-primary-200 hover:bg-primary-50 transition-all tooltip-trigger"
-                                                        >
-                                                            <Shield className="w-5 h-5" />
-                                                        </button>
-                                                    )}
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        setEditingMember(m);
+                                                                        setIsEditModalOpen(true);
+                                                                        setOpenMenuId(null);
+                                                                    }} 
+                                                                    className="w-full flex items-center gap-3 px-5 py-3 text-sm font-bold text-secondary-700 hover:bg-primary-50 hover:text-primary-600 transition-colors"
+                                                                >
+                                                                    <Shield className="w-4 h-4" /> Xem và sửa quyền
+                                                                </button>
+                                                                <div className="border-t border-secondary-100 my-2" />
+                                                                <button onClick={() => handleRemoveMember(m.id)} className="w-full flex items-center gap-3 px-5 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors">
+                                                                    <UserX className="w-4 h-4" /> Xóa khỏi tổ chức
+                                                                </button>
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
                                                 </div>
                                             )}
                                         </td>

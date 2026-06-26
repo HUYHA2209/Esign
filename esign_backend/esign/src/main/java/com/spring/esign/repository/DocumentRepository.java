@@ -23,6 +23,13 @@ public interface DocumentRepository extends JpaRepository<Document, Integer> {
     @Query("SELECT d FROM Document d WHERE d.documentGroup.groupId = :groupId ORDER BY d.documentId ASC")
     List<Document> findByDocumentGroup_GroupId(@Param("groupId") Integer groupId);
 
+    @Query("SELECT d FROM Document d WHERE d.documentGroup.groupId IN :groupIds")
+    List<Document> findByDocumentGroup_GroupIdIn(@Param("groupIds") List<Integer> groupIds);
+
+    @Query(
+            "SELECT d FROM Document d LEFT JOIN FETCH d.documentGroup JOIN FETCH d.uploadedBy WHERE d.documentGroup.groupId IN :groupIds")
+    List<Document> findByDocumentGroup_GroupIdInWithGroupAndUser(@Param("groupIds") List<Integer> groupIds);
+
     @Query(
             "SELECT d FROM Document d LEFT JOIN FETCH d.documentGroup JOIN FETCH d.uploadedBy WHERE d.account.accountId = :accountId")
     List<Document> findByAccount_AccountIdWithGroupAndUser(@Param("accountId") Long accountId);
@@ -69,13 +76,15 @@ public interface DocumentRepository extends JpaRepository<Document, Integer> {
 							JOIN document_signers ds
 								ON ds.document_id = d.document_id
 								AND ds.signer_email = :email
+								AND ((:accountId IS NULL AND ds.account_id IS NULL) OR (ds.account_id = :accountId))
 							LEFT JOIN signature_fields fs
 								ON fs.doc_signer_id = ds.doc_signer_id
 
 							WHERE g.group_id = :groupId
 						""",
             nativeQuery = true)
-    List<Object[]> findReceivedDetail(@Param("groupId") Integer groupId, @Param("email") String email);
+    List<Object[]> findReceivedDetail(
+            @Param("groupId") Integer groupId, @Param("email") String email, @Param("accountId") Long accountId);
 
     @Query(
             """
@@ -113,6 +122,15 @@ public interface DocumentRepository extends JpaRepository<Document, Integer> {
     String findCurrentFinalFileUrl(@Param("docId") Integer docId);
 
     /**
+     * Lấy finalFileUrl mới nhất với PESSIMISTIC_WRITE lock.
+     * Khóa dòng document này lại để tránh TOCTOU (Time-of-Check to Time-of-Use) race condition
+     * khi có 2 luồng cùng completeSignning tại đúng 1 miligiây.
+     */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT d.finalFileUrl FROM Document d WHERE d.documentId = :docId")
+    String findCurrentFinalFileUrlWithLock(@Param("docId") Integer docId);
+
+    /**
      * Lấy documents thuộc account mà do user cụ thể upload.
      * Dùng cho org members KHÔNG có canViewDocs — chỉ thấy doc mình upload.
      */
@@ -123,4 +141,23 @@ public interface DocumentRepository extends JpaRepository<Document, Integer> {
 
     List<Document> findByAccount_AccountIdAndStatusIn(
             Long accountId, List<com.spring.esign.enums.DocumentStatus> statuses);
+
+    long countByAccount_AccountId(Long accountId);
+
+    long countByAccount_AccountIdAndStatus(Long accountId, com.spring.esign.enums.DocumentStatus status);
+
+    long countByAccount_AccountIdAndUploadedBy_Id(Long accountId, String userId);
+
+    long countByAccount_AccountIdAndUploadedBy_IdAndStatus(
+            Long accountId, String userId, com.spring.esign.enums.DocumentStatus status);
+
+    List<Document> findTop5ByAccount_AccountIdOrderByCreatedAtDesc(Long accountId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(
+            "UPDATE Document d SET d.status = :newStatus WHERE d.documentGroup.groupId IN :groupIds AND d.status = :oldStatus")
+    void updateStatusByGroupIdsAndStatus(
+            @Param("groupIds") List<Integer> groupIds,
+            @Param("oldStatus") com.spring.esign.enums.DocumentStatus oldStatus,
+            @Param("newStatus") com.spring.esign.enums.DocumentStatus newStatus);
 }

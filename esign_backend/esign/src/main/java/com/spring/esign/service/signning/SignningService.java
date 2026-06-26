@@ -17,6 +17,8 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -97,6 +99,11 @@ public class SignningService {
             }
         }
 
+        DocumentGroup group = documentSignerList.get(0).getDocument().getDocumentGroup();
+        if (group.getExpiresAt() != null && group.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Tài liệu này đã hết hạn.");
+        }
+
         boolean isOrgSign = false;
         Account orgAccount = null;
         if (!documentSignerList.isEmpty()) {
@@ -162,7 +169,10 @@ public class SignningService {
                 }
 
                 byte[] preSealBytes = pdfDocumentService.burnVisualsToPdf(
-                        new ByteArrayInputStream(baseBytes), fieldValues, doc.getDocumentId());
+                        new ByteArrayInputStream(baseBytes),
+                        fieldValues,
+                        doc.getDocumentId(),
+                        java.util.List.of(ds.getDocSignerId()));
                 String objectName = storagePathResolver.tempPreSeal(tempSessionId, doc.getDocumentId());
 
                 redisSignService.save(tempSessionId, doc.getDocumentId(), objectName);
@@ -222,6 +232,7 @@ public class SignningService {
                     .docSigner(ds)
                     .messageToSign(messageToSign)
                     .messageToSignHash(messageToSignHash)
+                    .baseFinalFileUrl(ds.getDocument().getFinalFileUrl())
                     .build();
 
             prepareList.add(prepare);
@@ -325,26 +336,44 @@ public class SignningService {
     public CompleteSigningResponse completeSignning(
             String sessionId, Integer groupId, String credentialJson, String ip, String ua, String deviceFingerprint)
             throws Exception {
+        SigningContext ctx = null;
+        try {
+            // 1. Validate session, user, order
+            ctx = validateAndLoadContext(sessionId, groupId, ip, ua, deviceFingerprint);
 
-        // 1. Validate session, user, order
-        SigningContext ctx = validateAndLoadContext(sessionId, groupId, ip, ua, deviceFingerprint);
+            // 2. Verify WebAuthn assertion
+            WebAuthnResult webAuthnResult = verifyWebAuthn(ctx, credentialJson);
 
-        // 2. Verify WebAuthn assertion
-        WebAuthnResult webAuthnResult = verifyWebAuthn(ctx, credentialJson);
+            // 3. Process từng document (resolve PDF → seal → upload → audit)
+            for (DocumentSigner ds : ctx.getDocumentSignerList()) {
+                processDocumentSigning(ctx, ds, webAuthnResult);
+            }
 
-        // 3. Process từng document (resolve PDF → seal → upload → audit)
-        for (DocumentSigner ds : ctx.getDocumentSignerList()) {
-            processDocumentSigning(ctx, ds, webAuthnResult);
+            // 4. Finalize session & group
+            finalizeSession(ctx.getSession(), ip, ua, deviceFingerprint);
+            finalizeGroupIfComplete(groupId);
+
+            return CompleteSigningResponse.builder()
+                    .success(true)
+                    .message("Ký tài liệu và Audit Trail thành công")
+                    .build();
+        } finally {
+            if (ctx != null && ctx.getDocumentSignerList() != null) {
+                for (DocumentSigner ds : ctx.getDocumentSignerList()) {
+                    Document doc = ds.getDocument();
+                    String tempObjectName = redisSignService.get(sessionId, doc.getDocumentId());
+                    if (tempObjectName != null) {
+                        try {
+                            minioService.removeFile("document-temp", tempObjectName);
+                        } catch (Exception e) {
+                            log.error("Lỗi xóa file temp MinIO: {}", tempObjectName, e);
+                        }
+                        redisSignService.delete(sessionId, doc.getDocumentId());
+                        redisSignService.deleteFieldValues(sessionId, doc.getDocumentId());
+                    }
+                }
+            }
         }
-
-        // 4. Finalize session & group
-        finalizeSession(ctx.getSession(), ip, ua, deviceFingerprint);
-        finalizeGroupIfComplete(groupId);
-
-        return CompleteSigningResponse.builder()
-                .success(true)
-                .message("Ký tài liệu và Audit Trail thành công")
-                .build();
     }
 
     // =====================================================================
@@ -361,7 +390,9 @@ public class SignningService {
         String userId = authentication.getName();
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
-        long checkSigned = documentSignerRepository.countSignedDocumentsByUserAndGroup(user.getEmail(), groupId);
+        Long accountId = extractAccountIdForSignerQuery();
+        long checkSigned =
+                documentSignerRepository.countSignedDocumentsByUserAndGroup(user.getEmail(), groupId, accountId);
         if (checkSigned > 0) throw new AppException(ErrorCode.USER_SIGNED);
 
         SigningSession session = signingSessionRepository
@@ -580,14 +611,6 @@ public class SignningService {
                     auditTrail.getSignerIp(),
                     auditTrail.getDeviceFingerprint());
         }
-
-        // 8. Cleanup temp files
-        String tempObjectName = redisSignService.get(ctx.getSession().getSessionId(), doc.getDocumentId());
-        if (tempObjectName != null) {
-            minioService.removeFile("document-temp", tempObjectName);
-            redisSignService.delete(ctx.getSession().getSessionId(), doc.getDocumentId());
-            redisSignService.deleteFieldValues(ctx.getSession().getSessionId(), doc.getDocumentId());
-        }
     }
 
     /**
@@ -602,39 +625,21 @@ public class SignningService {
         Document doc = ds.getDocument();
         String sessionId = ctx.getSession().getSessionId();
 
-        // Re-fetch document từ DB để lấy trạng thái mới nhất (bypass Hibernate cache)
-        String latestFinalUrl = documentRepository.findCurrentFinalFileUrl(doc.getDocumentId());
+        SignaturePrepare prepare = signaturePrepareRepository
+                .findBySigningSessionAndDocument_DocumentId(ctx.getSession(), doc.getDocumentId())
+                .orElseThrow(() -> new RuntimeException("Lỗi dữ liệu: Không tìm thấy SignaturePrepare."));
 
-        // Kiểm tra xem có người khác ký xong giữa prepare và complete không
-        // So sánh finalFileUrl hiện tại với lúc prepare:
-        // - Nếu lúc prepare dùng file gốc (finalUrl == null) mà giờ có finalUrl → có
-        // người mới ký
-        // - Nếu lúc prepare dùng finalUrl cũ mà giờ finalUrl khác → có người mới ký
-        if (latestFinalUrl != null && !latestFinalUrl.isEmpty()) {
-            // Có bản final mới nhất → download và re-burn visuals của signer hiện tại
-            log.info(
-                    "[resolveInputPdf] Doc {} có bản final mới nhất ({}), re-burn visuals lên đó",
-                    doc.getDocumentId(),
-                    latestFinalUrl);
-            try (InputStream latestFinalDoc = minioService.downloadFile("document-finally", latestFinalUrl)) {
-                byte[] latestFinalBytes = latestFinalDoc.readAllBytes();
+        // Re-fetch document từ DB để lấy trạng thái mới nhất với PESSIMISTIC_WRITE lock
+        // Việc cấp Lock ở đây giúp ngăn chặn TOCTOU (Time-of-Check to Time-of-Use) nếu có 2 thread cùng
+        // completeSignning ở 1 miligiây.
+        String currentFinalUrl = documentRepository.findCurrentFinalFileUrlWithLock(doc.getDocumentId());
 
-                // Lấy fieldValues từ Redis để re-burn
-                Map<String, String> fieldValues = redisSignService.getFieldValues(sessionId, doc.getDocumentId());
-                if (fieldValues != null && !fieldValues.isEmpty()) {
-                    return pdfDocumentService.burnVisualsToPdf(
-                            new ByteArrayInputStream(latestFinalBytes), fieldValues, doc.getDocumentId());
-                } else {
-                    // Không có fieldValues → dùng bản pre-sealed (fallback)
-                    log.warn("[resolveInputPdf] Không tìm thấy fieldValues trong Redis, fallback sang pre-sealed");
-                    return downloadPreSealed(sessionId, doc.getDocumentId());
-                }
-            } catch (IOException e) {
-                throw new RuntimeException("Lỗi đọc bản final từ MinIO: " + doc.getDocumentId(), e);
-            }
+        // Kiểm tra Optimistic Locking: Nếu url hiện tại khác với url lúc prepare
+        if (!java.util.Objects.equals(currentFinalUrl, prepare.getBaseFinalFileUrl())) {
+            throw new AppException(ErrorCode.DOCUMENT_VERSION_CONFLICT);
         }
 
-        // Chưa ai ký → dùng bản pre-sealed từ temp
+        // Luôn dùng bản pre-sealed từ temp bucket để đảm bảo cryptographic integrity
         return downloadPreSealed(sessionId, doc.getDocumentId());
     }
 
@@ -746,10 +751,56 @@ public class SignningService {
             group.setGr_status(DocumentStatus.COMPLETED.name());
             documentGroupRepository.save(group);
             log.info("[finalizeGroupIfComplete] Group {} đã hoàn tất!", groupId);
+
+            List<Document> documents = documentRepository.findByDocumentGroup_GroupId(groupId);
+            if (!documents.isEmpty()) {
+                User uploader = documents.get(0).getUploadedBy();
+                String title = "Tài liệu đã hoàn tất";
+                String message = "Tất cả người nhận đã ký xong nhóm tài liệu \"" + group.getGroupName() + "\".";
+
+                // Gửi thông báo cho Uploader
+                notificationsService.sendToUser(
+                        uploader.getEmail(),
+                        com.spring.esign.enums.Notifications.DOCUMENT_COMPLETED,
+                        title,
+                        message,
+                        groupId,
+                        "Hệ thống",
+                        "system@esign.com");
+
+                // Gửi thông báo cho tất cả những người ký (Recipients) - Đã tối ưu truy vấn N+1
+                List<DocumentSigner> allSigners =
+                        documentSignerRepository.findByDocument_DocumentGroup_GroupId(groupId);
+                Set<String> notifiedEmails = new HashSet<>();
+                for (DocumentSigner ds : allSigners) {
+                    if (notifiedEmails.add(ds.getSignerEmail())
+                            && !ds.getSignerEmail().equals(uploader.getEmail())) {
+                        notificationsService.sendToUser(
+                                ds.getSignerEmail(),
+                                com.spring.esign.enums.Notifications.DOCUMENT_COMPLETED,
+                                title,
+                                message,
+                                groupId,
+                                "Hệ thống",
+                                "system@esign.com");
+                    }
+                }
+            }
         }
     }
 
+    private Long extractAccountIdForSignerQuery() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication instanceof JwtAuthenticationToken jwtToken) {
+            return (Long) jwtToken.getTokenAttributes().get("accountId");
+        } else if (authentication.getCredentials() instanceof Jwt jwt) {
+            return (Long) jwt.getClaims().get("accountId");
+        }
+        return null;
+    }
+
     private List<DocumentSigner> getDocumentSignerList(Integer groupId, String email) {
+        Long accountId = extractAccountIdForSignerQuery();
         List<Document> documentList = documentRepository.findByDocumentGroup_GroupIdWithGroupAndUser(groupId);
         if (documentList.isEmpty()) {
             throw new RuntimeException("Không tìm thấy tài liệu nào trong nhóm.");
@@ -761,7 +812,8 @@ public class SignningService {
         }
 
         List<DocumentSigner> documentSignerList =
-                documentSignerRepository.findByEmailAndDocumentIdsWithFullFetch(email, documentIds);
+                documentSignerRepository.findByEmailAndDocumentIdsAndAccountIdWithFullFetch(
+                        email, documentIds, accountId);
         if (documentSignerList.isEmpty()) {
             throw new AppException(ErrorCode.USER_NO_PERMISSION);
         }
@@ -795,8 +847,12 @@ public class SignningService {
 
             int order = 1;
             SigningMode mode = SigningMode.PARALLEL;
+            Long accountId = extractAccountIdForSignerQuery();
+            log.info("extractAccountIdForSignerQuery returned accountId = {}", accountId);
+
             List<DocumentSigner> documentSignerList =
-                    documentSignerRepository.findByEmailAndDocumentIdsWithFullFetch(user.getEmail(), docIds);
+                    documentSignerRepository.findByEmailAndDocumentIdsAndAccountIdWithFullFetch(
+                            user.getEmail(), docIds, accountId);
             if (documentSignerList.isEmpty()) {
                 log.error("User {} không có quyền ký các document: {}", user.getEmail(), docIds);
                 throw new AppException(ErrorCode.USER_NO_PERMISSION);
@@ -845,6 +901,11 @@ public class SignningService {
             throw new RuntimeException("Bạn không thể từ chối tài liệu ở trạng thái này.");
         }
 
+        DocumentGroup checkGroup = firstSigner.getDocument().getDocumentGroup();
+        if (checkGroup.getExpiresAt() != null && checkGroup.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Tài liệu này đã hết hạn.");
+        }
+
         if (!checkOrder(groupId)) {
             throw new RuntimeException("Chưa đến lượt bạn xử lý tài liệu này.");
         }
@@ -866,26 +927,30 @@ public class SignningService {
             ds.setDeviceFingerprint(deviceFingerprint);
             ds.setSignedAt(LocalDateTime.now());
             documentSignerRepository.save(ds);
+        }
 
-            Document doc = ds.getDocument();
-            doc.setStatus(DocumentStatus.DECLINED);
-            documentRepository.save(doc);
-
+        // Cập nhật TẤT CẢ doc trong group và ghi log
+        List<Document> allDocs = documentRepository.findByDocumentGroup_GroupId(groupId);
+        for (Document doc : allDocs) {
             if (uploaderEmail == null && doc.getUploadedBy() != null) {
                 uploaderEmail = doc.getUploadedBy().getEmail();
             }
 
-            auditTrailService.logEvent(
-                    doc, AuditEvent.DECLINED, user, ds, null, null, null, null, null, ip, deviceFingerprint);
-        }
-
-        // Cập nhật các signer còn lại (WAITING/VIEWED) trong group → hủy tất cả
-        List<Document> allDocs = documentRepository.findByDocumentGroup_GroupId(groupId);
-        for (Document doc : allDocs) {
             if (doc.getStatus() != DocumentStatus.DECLINED && doc.getStatus() != DocumentStatus.COMPLETED) {
                 doc.setStatus(DocumentStatus.DECLINED);
                 documentRepository.save(doc);
+
+                // Tìm xem người từ chối có ds trên doc này không để truyền vào logEvent
+                DocumentSigner currentDs = signers.stream()
+                        .filter(s -> s.getDocument().getDocumentId().equals(doc.getDocumentId()))
+                        .findFirst()
+                        .orElse(null);
+
+                auditTrailService.logEvent(
+                        doc, AuditEvent.DECLINED, user, currentDs, null, null, null, null, null, ip, deviceFingerprint);
             }
+
+            // Hủy các signer còn lại
             List<DocumentSigner> allSigners = documentSignerRepository.findByDocument_DocumentId(doc.getDocumentId());
             for (DocumentSigner otherDs : allSigners) {
                 if (otherDs.getStatus() == SignerStatus.WAITING || otherDs.getStatus() == SignerStatus.VIEWED) {

@@ -14,33 +14,17 @@ import com.spring.esign.entity.DocumentSigner;
 @Repository
 public interface DocumentSignerRepository extends JpaRepository<DocumentSigner, Integer> {
 
-    @Query("SELECT ds FROM DocumentSigner ds " + "JOIN FETCH ds.document d "
-            + "JOIN FETCH d.uploadedBy "
-            + "LEFT JOIN FETCH d.documentGroup "
-            + "WHERE ds.signerEmail = :email")
-    List<DocumentSigner> findBySignerEmailWithDocumentAndGroup(@Param("email") String email);
-
     @Query(
             """
 				SELECT ds FROM DocumentSigner ds
 				JOIN FETCH ds.document d
 				JOIN FETCH d.uploadedBy
 				LEFT JOIN FETCH d.documentGroup
+				LEFT JOIN FETCH ds.account a
 				WHERE ds.signerEmail = :email
 				AND (
-					ds.account.accountId = :accountId
-					OR (
-						ds.account IS NULL
-						AND (
-							d.account.accountId = :accountId
-							OR (
-								:isPersonal = true
-								AND d.account.accountId NOT IN (
-									SELECT am.account.accountId FROM AccountMember am WHERE am.user.id = :userId
-								)
-							)
-						)
-					)
+					a.accountId = :accountId
+					OR (:isPersonal = true AND a IS NULL)
 				)
 			""")
     List<DocumentSigner> findReceivedDocumentsForWorkspace(
@@ -51,12 +35,25 @@ public interface DocumentSignerRepository extends JpaRepository<DocumentSigner, 
 
     List<DocumentSigner> findByDocument_DocumentId(Integer documentId);
 
+    List<DocumentSigner> findByDocument_DocumentGroup_GroupId(Integer groupId);
+
     void deleteByDocument_DocumentId(Integer documentId);
 
     // Find all signer records by email (used for recipient views)
     List<DocumentSigner> findBySignerEmail(String signerEmail);
 
-    Optional<DocumentSigner> findByDocument_DocumentIdAndSignerEmail(Integer documentId, String signerEmail);
+    @Query(
+            """
+		SELECT ds FROM DocumentSigner ds
+		LEFT JOIN ds.account a
+		WHERE ds.document.documentId = :documentId
+		AND ds.signerEmail = :signerEmail
+		AND (a.accountId = :accountId OR a IS NULL)
+	""")
+    Optional<DocumentSigner> findByDocumentIdAndSignerEmailAndAccountIdFallback(
+            @Param("documentId") Integer documentId,
+            @Param("signerEmail") String signerEmail,
+            @Param("accountId") Long accountId);
 
     @Modifying
     @Query("DELETE FROM DocumentSigner ds WHERE ds.document.documentId IN :documentIds")
@@ -64,31 +61,40 @@ public interface DocumentSignerRepository extends JpaRepository<DocumentSigner, 
 
     @Query(
             """
-				SELECT ds FROM DocumentSigner ds
-				JOIN FETCH ds.document d
-				JOIN FETCH d.uploadedBy
-				LEFT JOIN FETCH d.documentGroup
-				WHERE ds.signerEmail = :email
-				AND d.documentId IN :ids
-			""")
-    List<DocumentSigner> findByEmailAndDocumentIdsWithFullFetch(
-            @Param("email") String email, @Param("ids") List<Integer> ids);
-
-    @Modifying
-    @Query("DELETE FROM DocumentSigner ds WHERE ds.document.documentId IN :docIds AND ds.signerEmail IN :emails")
-    void deleteByDocumentIdsAndEmails(@Param("docIds") List<Integer> docIds, @Param("emails") List<String> emails);
+			SELECT ds FROM DocumentSigner ds
+			JOIN FETCH ds.document d
+			JOIN FETCH d.uploadedBy
+			LEFT JOIN FETCH d.documentGroup
+			LEFT JOIN FETCH ds.account a
+			WHERE ds.signerEmail = :email
+			AND d.documentId IN :ids
+			AND (a.accountId = :accountId OR a IS NULL)
+		""")
+    List<DocumentSigner> findByEmailAndDocumentIdsAndAccountIdWithFullFetch(
+            @Param("email") String email, @Param("ids") List<Integer> ids, @Param("accountId") Long accountId);
 
     @Query(
             """
 			SELECT COUNT(ds)
 			FROM DocumentSigner ds
+			LEFT JOIN ds.account a
 			WHERE ds.signerEmail = :email
 			AND ds.status = com.spring.esign.enums.SignerStatus.SIGNED
 			AND ds.document.documentGroup.groupId = :groupId
+			AND (a.accountId = :accountId OR a IS NULL)
 			""")
-    long countSignedDocumentsByUserAndGroup(@Param("email") String email, @Param("groupId") Integer groupId);
+    long countSignedDocumentsByUserAndGroup(
+            @Param("email") String email, @Param("groupId") Integer groupId, @Param("accountId") Long accountId);
 
     @Query(
             "SELECT COUNT(ds) = 0 FROM DocumentSigner ds WHERE ds.document.documentId = :documentId AND ds.status <> com.spring.esign.enums.SignerStatus.SIGNED")
     boolean isAllSignersSignedForDocument(@Param("documentId") Integer documentId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(
+            "UPDATE DocumentSigner ds SET ds.status = :newStatus WHERE ds.document.documentGroup.groupId IN :groupIds AND ds.status IN :oldStatuses")
+    void updateStatusByGroupIdsAndStatuses(
+            @Param("groupIds") java.util.List<Integer> groupIds,
+            @Param("oldStatuses") java.util.List<com.spring.esign.enums.SignerStatus> oldStatuses,
+            @Param("newStatus") com.spring.esign.enums.SignerStatus newStatus);
 }

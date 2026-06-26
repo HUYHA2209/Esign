@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getMyDocuments, getDocumentsGroup, deleteDocumentGroup, getReceivedDocuments, getReceivedGroupDetail, rejectSign } from '../../service/documentApi';
+import { getMyDocuments, getDocumentsGroup, deleteDocumentGroup, getReceivedDocuments, getReceivedGroupDetail, rejectSign, downloadDocumentsFile, downloadDocumentsFileToRecipients } from '../../service/documentApi';
 import { checkOrder } from '../../service/signingApi';
 import { toast } from 'react-toastify';
 import {
@@ -11,6 +11,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import CancelModal from './components/CancelModal';
 import DeclineModal from '../ReceivedDocuments/components/DeclineModal';
+import CountdownTimer from './components/CountdownTimer';
 import { useParams } from 'react-router-dom';
 import { getWorkSpaces } from '../../service/userApi';
 const formatDate = (dateStr) => {
@@ -51,16 +52,22 @@ const Documents = () => {
     const [selectedDeclineGroupId, setSelectedDeclineGroupId] = useState(null);
     const [isDeclining, setIsDeclining] = useState(false);
     const [canUpload, setCanUpload] = useState(true);
+    const [canViewDocs, setCanViewDocs] = useState(true);
+
     useEffect(() => {
         if (orgUrl) {
             getWorkSpaces().then(res => {
                 if (res && res.result) {
                     const ws = res.result.find(w => w.accountUrl === orgUrl);
-                    if (ws) setCanUpload(ws.role === 'ADMIN' || ws.canUpload);
+                    if (ws) {
+                        setCanUpload(ws.role === 'ADMIN' || ws.canUpload);
+                        setCanViewDocs(ws.role === 'ADMIN' || ws.canViewDocs);
+                    }
                 }
             }).catch(console.error);
         } else {
             setCanUpload(true);
+            setCanViewDocs(true);
         }
     }, [orgUrl]);
     useEffect(() => {
@@ -160,6 +167,29 @@ const Documents = () => {
             setIsDeclining(false);
         }
     };
+
+    const handleDownloadPdf = async (documentIds, mode = viewMode) => {
+        try {
+            if (!documentIds || documentIds.length === 0) return;
+            for (let id of documentIds) {
+                const blob = mode === 'received' 
+                    ? await downloadDocumentsFileToRecipients(id, 'download')
+                    : await downloadDocumentsFile(id, 'download');
+                const url = window.URL.createObjectURL(new Blob([blob]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `document_${id}.pdf`);
+                document.body.appendChild(link);
+                link.click();
+                link.parentNode.removeChild(link);
+            }
+            toast.success('Đã tải xuống tài liệu');
+        } catch (err) {
+            console.error('Download error:', err);
+            toast.error('Có lỗi xảy ra khi tải xuống tài liệu. Bạn có thể không có quyền tải bản PDF này.');
+        }
+    };
+
     const getStatusBadge = (status) => {
         const configs = {
             signed: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Đã ký', icon: CheckCircle2 },
@@ -227,16 +257,15 @@ const Documents = () => {
         // PENDING: chỉ cho Hủy (cancel/void), KHÔNG cho Xóa
         if (status === 'PENDING') {
             return [
-                { icon: Eye, label: 'Xem chi tiết', onClick: () => console.log('View', docId) },
                 { icon: Shield, label: 'Xem lịch sử', onClick: () => navigate(orgUrl ? `/o/${orgUrl}/documents/${doc.documentId || docId}/audit-trail` : `/documents/${doc.documentId || docId}/audit-trail`) },
-                { 
-                    icon: XCircle, 
-                    label: 'Hủy tài liệu', 
+                {
+                    icon: XCircle,
+                    label: 'Hủy tài liệu',
                     onClick: () => {
                         setSelectedCancelGroupId(docId);
                         setIsCancelModalOpen(true);
-                    }, 
-                    danger: true 
+                    },
+                    danger: true
                 }
             ];
         }
@@ -249,14 +278,14 @@ const Documents = () => {
                     onClick: () => navigate(orgUrl ? `/o/${orgUrl}/documents/document-editor/${doc.groupId || doc.documentId}` : `/documents/document-editor/${doc.groupId || doc.documentId}`),
                     highlight: true
                 },
-                { icon: Download, label: 'Tải xuống', onClick: () => console.log('Download', docId) },
+                { icon: Download, label: 'Tải xuống', onClick: () => handleDownloadPdf(doc.allIds || [doc.documentId]) },
                 { icon: Trash2, label: 'Xóa', onClick: () => handleDeleteDocument(docId), danger: true }
             ];
         }
         // COMPLETED: chỉ xem/tải, KHÔNG cho Xóa hay Hủy
         if (status === 'COMPLETED' || status === 'SIGNED') {
             return [
-                { icon: Download, label: 'Tải xuống', onClick: () => console.log('Download', docId) },
+                { icon: Download, label: 'Tải xuống', onClick: () => handleDownloadPdf(doc.allIds || [doc.documentId]) },
                 { icon: Shield, label: 'Xem lịch sử', onClick: () => navigate(orgUrl ? `/o/${orgUrl}/documents/${doc.documentId || docId}/audit-trail` : `/documents/${doc.documentId || docId}/audit-trail`) },
                 { icon: Share2, label: 'Chia sẻ', onClick: () => console.log('Share', docId) },
                 { icon: Copy, label: 'Sao chép', onClick: () => console.log('Copy', docId) }
@@ -264,7 +293,7 @@ const Documents = () => {
         }
         // VOID, DECLINED, EXPIRED: cho tải xuống + Xem lịch sử + Xóa (dọn dẹp)
         return [
-            { icon: Download, label: 'Tải xuống', onClick: () => console.log('Download', docId) },
+            { icon: Download, label: 'Tải xuống', onClick: () => handleDownloadPdf(doc.allIds || [doc.documentId]) },
             { icon: Shield, label: 'Xem lịch sử', onClick: () => navigate(orgUrl ? `/o/${orgUrl}/documents/${doc.documentId || docId}/audit-trail` : `/documents/${doc.documentId || docId}/audit-trail`) },
             { icon: Trash2, label: 'Xóa', onClick: () => handleDeleteDocument(docId), danger: true }
         ];
@@ -333,6 +362,15 @@ const Documents = () => {
                     </motion.button>
                 )}
             </div>
+            {/* UX Hint for limited view */}
+            {!canViewDocs && (
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                    <p className="text-sm font-medium text-blue-700">
+                        Bạn chỉ có thể xem các tài liệu do chính bạn tải lên hoặc các tài liệu bạn được yêu cầu xử lý.
+                    </p>
+                </div>
+            )}
             {/* Stats Dashboard */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6">
                 {stats.map((stat, index) => (
@@ -427,7 +465,14 @@ const Documents = () => {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="py-5 px-6">{getStatusBadge(doc.status?.toLowerCase() || 'draft')}</td>
+                                            <td className="py-5 px-6">
+                                                <div className="flex flex-col gap-1.5">
+                                                    {getStatusBadge(doc.status?.toLowerCase() || 'draft')}
+                                                    {doc.status?.toUpperCase() === 'PENDING' && doc.expiresAt && (
+                                                        <CountdownTimer expiresAt={doc.expiresAt} onExpire={() => fetchDocuments()} />
+                                                    )}
+                                                </div>
+                                            </td>
                                             <td className="py-5 px-6">
                                                 <div className="flex items-center gap-3 min-w-0">
                                                     <div className="w-8 h-8 bg-secondary-100 rounded-full flex items-center justify-center flex-shrink-0 ring-2 ring-white">
@@ -450,8 +495,13 @@ const Documents = () => {
                                                         (() => {
                                                             const signerStatus = doc.signerStatus?.toUpperCase();
                                                             const overallStatus = doc.status?.toUpperCase();
-                                                            const statusToCheck = signerStatus || overallStatus;
-                                                            if (statusToCheck === 'PENDING') {
+                                                            const statusToCheck = (overallStatus === 'DECLINED' || overallStatus === 'VOID')
+                                                                ? overallStatus
+                                                                : (signerStatus || overallStatus);
+                                                            const isLocalExpired = doc.expiresAt && new Date(doc.expiresAt) <= new Date();
+                                                            const effectiveStatus = isLocalExpired ? 'EXPIRED' : statusToCheck;
+
+                                                            if (effectiveStatus === 'PENDING') {
                                                                 return (
                                                                     <div className="flex flex-col items-center gap-1.5">
                                                                         <motion.button
@@ -476,15 +526,31 @@ const Documents = () => {
                                                                     </div>
                                                                 );
                                                             }
-                                                            if (statusToCheck === 'SIGNED' || statusToCheck === 'COMPLETED') {
+                                                            if (effectiveStatus === 'SIGNED' || effectiveStatus === 'COMPLETED') {
                                                                 return (
-                                                                    <span className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-lg border border-emerald-200 whitespace-nowrap">
-                                                                        <CheckCircle2 className="w-3.5 h-3.5" />
-                                                                        Đã hoàn thành
-                                                                    </span>
+                                                                    <div className="flex flex-col items-center gap-1.5">
+                                                                        <span className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-50 text-emerald-700 text-[11px] font-bold rounded-lg border border-emerald-200 whitespace-nowrap">
+                                                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                                                            Đã hoàn thành
+                                                                        </span>
+                                                                        {overallStatus === 'COMPLETED' && (
+                                                                            <motion.button
+                                                                                whileHover={{ scale: 1.04 }}
+                                                                                whileTap={{ scale: 0.96 }}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleDownloadPdf(doc.allIds || [doc.documentId]);
+                                                                                }}
+                                                                                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-indigo-700 transition-all whitespace-nowrap"
+                                                                            >
+                                                                                <Download className="w-3.5 h-3.5" />
+                                                                                Tải bản PDF
+                                                                            </motion.button>
+                                                                        )}
+                                                                    </div>
                                                                 );
                                                             }
-                                                            if (statusToCheck === 'DECLINED') {
+                                                            if (effectiveStatus === 'DECLINED') {
                                                                 return (
                                                                     <span className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-red-50 text-red-600 text-[11px] font-bold rounded-lg border border-red-200 whitespace-nowrap">
                                                                         <Ban className="w-3.5 h-3.5" />
@@ -556,35 +622,37 @@ const Documents = () => {
                         </div>
                         <h3 className="text-xl font-bold text-secondary-900 mb-2 font-display">Không tìm thấy tài liệu</h3>
                         <p className="text-secondary-500 font-medium mb-8 max-w-xs">Hãy thử thay đổi từ khóa tìm kiếm hoặc tải lên tài liệu mới.</p>
-                        <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => navigate('/documents/document-editor')}
-                            className="inline-flex items-center gap-2 px-8 py-3.5 premium-gradient text-white rounded-2xl font-bold shadow-lg shadow-primary-500/20"
-                        >
-                            <Plus className="w-5 h-5" />
-                            Tải tài liệu lên
-                        </motion.button>
+                        {canUpload && (
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => navigate(orgUrl ? `/o/${orgUrl}/documents/document-editor` : '/documents/document-editor')}
+                                className="inline-flex items-center gap-2 px-8 py-3.5 premium-gradient text-white rounded-2xl font-bold shadow-lg shadow-primary-500/20"
+                            >
+                                <Plus className="w-5 h-5" />
+                                Tải tài liệu lên
+                            </motion.button>
+                        )}
                     </div>
                 )}
             </div>
-            <CancelModal 
-                isOpen={isCancelModalOpen} 
+            <CancelModal
+                isOpen={isCancelModalOpen}
                 onClose={() => {
                     setIsCancelModalOpen(false);
                     setSelectedCancelGroupId(null);
-                }} 
-                onConfirm={handleCancelDocument} 
-                isSubmitting={isCanceling} 
+                }}
+                onConfirm={handleCancelDocument}
+                isSubmitting={isCanceling}
             />
-            <DeclineModal 
-                isOpen={isDeclineModalOpen} 
+            <DeclineModal
+                isOpen={isDeclineModalOpen}
                 onClose={() => {
                     setIsDeclineModalOpen(false);
                     setSelectedDeclineGroupId(null);
-                }} 
-                onConfirm={handleDeclineDocument} 
-                isSubmitting={isDeclining} 
+                }}
+                onConfirm={handleDeclineDocument}
+                isSubmitting={isDeclining}
             />
         </div>
     );

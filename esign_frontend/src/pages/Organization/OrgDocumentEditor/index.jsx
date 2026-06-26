@@ -63,6 +63,7 @@ const DocumentEditor = () => {
     ]);
     const [enableSigningOrder, setEnableSigningOrder] = useState(false);
     const [selectedRecipient, setSelectedRecipient] = useState(1);
+    const [expiresAt, setExpiresAt] = useState(null);
 
     // ─── State: Fields & PDF ───
     const [signatureFontSize, setSignatureFontSize] = useState(18);
@@ -467,10 +468,11 @@ const DocumentEditor = () => {
             toast.error('Vui lòng thêm ít nhất 1 người nhận hợp lệ (email).');
             return;
         }
-        const emails = validRecipients.map(r => r.email.toLowerCase());
-        const dup = emails.find((e, i) => emails.indexOf(e) !== i);
-        if (dup) {
-            toast.error(`Email bị trùng: ${dup}`);
+        const identities = validRecipients.map(r => `${r.email.toLowerCase()}-${r.accountId || 'personal'}`);
+        const dupIndex = identities.findIndex((id, i) => identities.indexOf(id) !== i);
+        if (dupIndex !== -1) {
+            const dupEmail = validRecipients[dupIndex].email;
+            toast.error(`Bạn đã thêm tư cách ký này cho email ${dupEmail} rồi. Không thể thêm trùng lặp!`);
             return;
         }
         for (const r of validRecipients) {
@@ -484,6 +486,17 @@ const DocumentEditor = () => {
             }
         }
 
+        // Validate expiresAt bắt buộc
+        if (!expiresAt) {
+            toast.error('Vui lòng chọn thời hạn ký tài liệu (bước 1).');
+            return;
+        }
+        const expDate = new Date(expiresAt);
+        if (expDate <= new Date()) {
+            toast.error('Thời hạn ký phải nằm trong tương lai.');
+            return;
+        }
+
         // Validate chữ ký: mỗi người nhận + mỗi file phải có ít nhất 1 trường SIGNATURE
         const validation = validateBeforeSend(recipients, fields, uploadedFiles);
         if (!validation.valid) {
@@ -493,7 +506,7 @@ const DocumentEditor = () => {
 
         await sendDocumentFlow({
             id, uploadedFiles, documentName, recipients, enableSigningOrder, fields, signatureFontSize,
-            sendDocument, toast, navigate, setIsSending, orgUrl
+            sendDocument, toast, navigate, setIsSending, orgUrl, expiresAt
         });
     };
 
@@ -549,6 +562,8 @@ const DocumentEditor = () => {
                                 removeRecipient={removeRecipient}
                                 enableSigningOrder={enableSigningOrder}
                                 setEnableSigningOrder={setEnableSigningOrder}
+                                expiresAt={expiresAt}
+                                setExpiresAt={setExpiresAt}
                                 isStep1Complete={isStep1Complete}
                                 canProceed={canProceed}
                                 goToStep={goToStep}
@@ -590,6 +605,7 @@ const DocumentEditor = () => {
                                 onPreviewDocumentLoadSuccess={onPreviewDocumentLoadSuccess}
                                 fields={fields}
                                 recipients={recipients}
+                                expiresAt={expiresAt}
                                 isStep1Complete={isStep1Complete}
                                 isStep2Complete={isStep2Complete}
                                 isSending={isSending}

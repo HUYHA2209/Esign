@@ -85,8 +85,10 @@ public class WebAuthnService {
         PublicKeyCredentialRpEntity rp = new PublicKeyCredentialRpEntity(rpId, rpName);
 
         // User Entity
+        String webAuthnUserId = userId + "@personal";
+        String displayName = user.getFullName() + " (Cá nhân)";
         PublicKeyCredentialUserEntity userEntity =
-                new PublicKeyCredentialUserEntity(userId.getBytes(), user.getFullName(), user.getFullName());
+                new PublicKeyCredentialUserEntity(webAuthnUserId.getBytes(), displayName, displayName);
 
         // PubKey Cred Params
         List<PublicKeyCredentialParameters> pubKeyCredParams = List.of(

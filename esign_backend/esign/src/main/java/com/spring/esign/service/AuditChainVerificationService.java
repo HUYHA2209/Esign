@@ -98,12 +98,17 @@ public class AuditChainVerificationService {
 
     /**
      * Tính entryHash theo cùng công thức với AuditTrailService.logEvent().
-     * SHA-256(auditId | eventType | timestamp | messageToSignHash | prevHash)
+     * SHA-256(auditId | eventType | timestamp | messageToSignHash | signerEmail | signerIp | pdfHashBefore | pdfHashAfter | credentialId | prevHash)
      */
     private String computeEntryHash(AuditTrail audit, String prevHash) {
         String input = audit.getAuditId() + "|" + audit.getEventType()
                 + "|" + audit.getTimestamp()
                 + "|" + audit.getMessageToSignHash()
+                + "|" + audit.getSignerEmail()
+                + "|" + audit.getSignerIp()
+                + "|" + audit.getPdfHashBefore()
+                + "|" + audit.getPdfHashAfter()
+                + "|" + audit.getCredentialId()
                 + "|" + prevHash;
         return hash(input);
     }

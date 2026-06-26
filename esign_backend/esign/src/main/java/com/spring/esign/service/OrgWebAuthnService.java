@@ -78,8 +78,10 @@ public class OrgWebAuthnService {
         challengeStore.put(challengeKey, challenge);
 
         PublicKeyCredentialRpEntity rp = new PublicKeyCredentialRpEntity(rpId, rpName);
+        String webAuthnUserId = userId + "@org:" + account.getAccountId();
+        String displayName = user.getFullName() + " (" + account.getAccountName() + ")";
         PublicKeyCredentialUserEntity userEntity =
-                new PublicKeyCredentialUserEntity(userId.getBytes(), user.getFullName(), user.getFullName());
+                new PublicKeyCredentialUserEntity(webAuthnUserId.getBytes(), displayName, displayName);
 
         List<PublicKeyCredentialParameters> pubKeyCredParams = List.of(
                 new PublicKeyCredentialParameters(PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.ES256),

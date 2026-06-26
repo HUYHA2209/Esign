@@ -15,6 +15,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     List<Notification> findByRecipientEmailAndIsReadFalseOrderByCreatedAtDesc(String recipientEmail);
 
+    List<Notification> findByRecipientEmailOrderByCreatedAtDesc(
+            String recipientEmail, org.springframework.data.domain.Pageable pageable);
+
     long countByRecipientEmailAndIsReadFalse(String recipientEmail);
 
     @Modifying

@@ -48,6 +48,9 @@ public class SignaturePrepare {
     @Column(name = "message_to_sign_hash", nullable = false)
     String messageToSignHash;
 
+    @Column(name = "base_final_file_url")
+    String baseFinalFileUrl;
+
     @Column(name = "created_at", updatable = false)
     LocalDateTime createdAt;
 

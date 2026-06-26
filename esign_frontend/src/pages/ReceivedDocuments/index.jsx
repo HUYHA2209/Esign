@@ -11,6 +11,7 @@ import { getSignature } from '../../service/signatureApi';
 import { getOrgSignature } from '../../service/organizationApi';
 import { ChevronUp, Loader2, AlertCircle } from 'lucide-react';
 import DeclineModal from './components/DeclineModal';
+import ConflictModal from './components/ConflictModal';
 
 
 const ReceivedDocuments = () => {
@@ -45,6 +46,7 @@ const ReceivedDocuments = () => {
     // Signing state
     const [isSigning, setIsSigning] = useState(false);
     const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
+    const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
 
     // Add guard ref to prevent React 18 Strict Mode from fetching API twice
     const dataLoadedRef = useRef(false);
@@ -213,6 +215,9 @@ const ReceivedDocuments = () => {
             console.error('Sign error:', err);
             if (err.name === 'NotAllowedError') {
                 alert('Bạn đã hủy xác thực sinh trắc học. Quá trình ký được dừng lại.');
+            } else if (err.response?.data?.code === 1038 || err.response?.status === 409) {
+                // Hiển thị modal xử lý xung đột phiên bản
+                setIsConflictModalOpen(true);
             } else {
                 const errorMessage = err.response?.data?.message || err.message || 'Có lỗi xảy ra khi hoàn tất ký.';
                 toast.error(errorMessage);
@@ -400,6 +405,16 @@ const ReceivedDocuments = () => {
                 onClose={() => setIsDeclineModalOpen(false)} 
                 onConfirm={handleRejectSign} 
                 isSubmitting={isSigning} 
+            />
+
+            <ConflictModal
+                isOpen={isConflictModalOpen}
+                onClose={() => setIsConflictModalOpen(false)}
+                onConfirm={() => {
+                    setIsConflictModalOpen(false);
+                    handleCompleteSign();
+                }}
+                isSubmitting={isSigning}
             />
         </div>
     );

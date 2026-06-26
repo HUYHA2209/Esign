@@ -6,12 +6,12 @@ import { uploadDocuments, updateDraft } from '../../../../service/documentApi';
  * Returns { upsertSigners, deletedSignerEmails, upsertFields, deletedFieldIds }
  */
 function computeDelta(currentRecipients, savedRecipients, currentFields, savedFields, enableSigningOrder) {
-    // ── Signers delta (keyed by email) ──
-    const savedEmailSet = new Set(savedRecipients.map(r => r.email?.toLowerCase()).filter(Boolean));
-    const currentEmailSet = new Set(currentRecipients.filter(r => r.email?.trim()).map(r => r.email.toLowerCase()));
+    // ── Signers delta (keyed by id) ──
+    const savedIdSet = new Set(savedRecipients.filter(r => r.id).map(r => r.id));
+    const currentIdSet = new Set(currentRecipients.filter(r => r.id).map(r => r.id));
 
-    // Deleted: emails in saved but not in current
-    const deletedSignerEmails = [...savedEmailSet].filter(e => !currentEmailSet.has(e));
+    // Deleted: ids in saved but not in current
+    const deletedDocSignerIds = [...savedIdSet].filter(id => !currentIdSet.has(id));
 
     // Upsert: all current recipients with valid email (BE will figure out create vs update)
     const upsertSigners = currentRecipients
@@ -21,6 +21,7 @@ function computeDelta(currentRecipients, savedRecipients, currentFields, savedFi
             name: r.name,
             role: r.role || 'signer',
             signingOrder: enableSigningOrder ? index + 1 : 1,
+            accountId: r.accountId || null,
         }));
 
     // ── Fields delta (keyed by serverFieldId for existing, id for new) ──
@@ -62,6 +63,7 @@ function computeDelta(currentRecipients, savedRecipients, currentFields, savedFi
                     width: f.width,
                     height: f.height,
                     recipientEmail: recipient.email,
+                    accountId: recipient.accountId || null,
                 });
             }
         } else {
@@ -76,6 +78,7 @@ function computeDelta(currentRecipients, savedRecipients, currentFields, savedFi
                 width: f.width,
                 height: f.height,
                 recipientEmail: recipient.email,
+                accountId: recipient.accountId || null,
             });
         }
     }
@@ -88,7 +91,7 @@ function computeDelta(currentRecipients, savedRecipients, currentFields, savedFi
         }
     }
 
-    return { upsertSigners, deletedSignerEmails, upsertFields, deletedFieldIds };
+    return { upsertSigners, deletedDocSignerIds, upsertFields, deletedFieldIds };
 }
 
 export function useAutoSaveDraft({

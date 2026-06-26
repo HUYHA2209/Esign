@@ -37,7 +37,7 @@ public interface AccountMemberRepository extends JpaRepository<AccountMember, Lo
 				FROM account_members am
 				WHERE am.account_id = :accountId
 				AND am.user_id = :userId
-				AND am.can_invite = b'1'
+				AND (am.can_invite = b'1' OR am.role = 'ADMIN')
 			) THEN TRUE
 			ELSE FALSE
 		END
@@ -63,4 +63,6 @@ public interface AccountMemberRepository extends JpaRepository<AccountMember, Lo
             @org.springframework.data.repository.query.Param("userId") String userId);
 
     void deleteByAccount_AccountId(Long accountId);
+
+    long countByAccount_AccountId(Long accountId);
 }

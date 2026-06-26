@@ -1,0 +1,17 @@
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Do not commit real database dumps with sensitive data
+# Uncomment the following line if SQLQuerydoan2.sql contains real data
+# SQLQuerydoan2.sql
+
+# Log files
+*.log

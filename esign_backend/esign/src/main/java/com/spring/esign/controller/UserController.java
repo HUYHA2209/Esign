@@ -42,4 +42,24 @@ public class UserController {
                 .result(userService.updateMyInfo(request))
                 .build();
     }
+
+    @DeleteMapping("/me")
+    public ApiResponse<String> deleteMyAccount(jakarta.servlet.http.HttpServletResponse response) {
+        userService.deleteMyAccount();
+
+        // Clear refresh token cookie
+        org.springframework.http.ResponseCookie cookie = org.springframework.http.ResponseCookie.from(
+                        "refreshToken", "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(0)
+                .sameSite("Strict")
+                .build();
+        response.addHeader(org.springframework.http.HttpHeaders.SET_COOKIE, cookie.toString());
+
+        return ApiResponse.<String>builder()
+                .result("Tài khoản đã được xóa vĩnh viễn")
+                .build();
+    }
 }

@@ -60,7 +60,7 @@ export const PDFPageDroppable = ({ pageNumber, fileIndex, children }) => {
 };
 
 // ─── Draggable Field on Page ───
-export const DraggableFieldOnPage = ({ id, field, updateFieldSize, removeField, fieldTypes, recipients }) => {
+export const DraggableFieldOnPage = ({ id, field, updateFieldSize, removeField, fieldTypes, recipients, isSelected, onSelect }) => {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: id,
         data: { id, ...field }
@@ -120,7 +120,11 @@ export const DraggableFieldOnPage = ({ id, field, updateFieldSize, removeField, 
             style={style}
             {...listeners}
             {...attributes}
-            className={`absolute z-10 p-2 rounded border-2 shadow-sm cursor-move flex items-center gap-2 bg-white ${recipientColor.border} overflow-hidden transition-colors duration-200`}
+            onClick={(e) => {
+                e.stopPropagation();
+                if (onSelect) onSelect(id);
+            }}
+            className={`absolute z-10 p-2 rounded border-2 shadow-sm cursor-move flex items-center gap-2 bg-white ${recipientColor.border} overflow-hidden transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-1 scale-105 shadow-md z-20' : ''}`}
         >
             <Icon className={`w-4 h-4 flex-shrink-0 ${recipientColor.text}`} />
             <span className={`text-xs font-bold truncate flex-1 ${recipientColor.text}`}>

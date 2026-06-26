@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { DndContext, DragOverlay, pointerWithin } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { Document, Page } from 'react-pdf';
@@ -19,6 +19,7 @@ const Step2Content = ({
     fieldTypes,
     removeField,
     updateFieldSize,
+    updateField,
     pdfScrollRef,
     selectedRecipient,
     setSelectedRecipient,
@@ -28,6 +29,7 @@ const Step2Content = ({
     isStepAnimating,
 }) => {
     const recipientsWithEmail = recipients.filter(r => r.email);
+    const [selectedFieldId, setSelectedFieldId] = useState(null);
 
     return (
         <DndContext sensors={sensors}
@@ -36,7 +38,7 @@ const Step2Content = ({
             collisionDetection={pointerWithin}>
             <div className={`flex gap-6 h-[calc(100vh-4rem)] w-full transition-all duration-300 ease-out ${isStepAnimating ? 'opacity-0 translate-x-2' : 'opacity-100 translate-x-0'}`}>
                 {/* Left: PDF Viewer */}
-                <div ref={pdfScrollRef} className="flex-1 overflow-y-auto">
+                <div ref={pdfScrollRef} className="flex-1 overflow-y-auto" onClick={() => setSelectedFieldId(null)}>
                     {uploadedFiles.length > 0 && (
                         <Document
                             file={uploadedFiles[currentFileIndex].file}
@@ -66,6 +68,8 @@ const Step2Content = ({
                                                         removeField={removeField}
                                                         updateFieldSize={updateFieldSize}
                                                         recipients={recipientsWithEmail}
+                                                        isSelected={selectedFieldId === field.id}
+                                                        onSelect={setSelectedFieldId}
                                                     />
                                                 ))}
                                             </div>
@@ -144,6 +148,45 @@ const Step2Content = ({
                     </div>
 
                     <hr className="my-4" />
+
+                    {/* Field Properties */}
+                    {selectedFieldId && (
+                        <div className="mb-6 animate-fade-in">
+                            <h3 className="text-sm font-semibold text-slate-900 mb-3">Thuộc tính trường</h3>
+                            {(() => {
+                                const selectedField = fields.find(f => f.id === selectedFieldId);
+                                if (!selectedField) return null;
+                                const handleFontSizeChange = (e) => {
+                                    const newSize = parseInt(e.target.value, 10);
+                                    const oldSize = selectedField.fontSize || 14;
+                                    const ratio = newSize / oldSize;
+                                    updateField(selectedField.id, {
+                                        fontSize: newSize,
+                                        width: Math.min(100, selectedField.width * ratio),
+                                        height: Math.min(100, selectedField.height * ratio)
+                                    });
+                                };
+                                return (
+                                    <div className="space-y-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-700 mb-1">Cỡ chữ (px)</label>
+                                            <select
+                                                value={selectedField.fontSize || 14}
+                                                onChange={handleFontSizeChange}
+                                                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            >
+                                                {[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64].map(size => (
+                                                    <option key={size} value={size}>{size}px</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    )}
+
+                    {selectedFieldId && <hr className="my-4" />}
 
                     {/* Navigation */}
                     <div className="flex gap-3">

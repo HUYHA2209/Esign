@@ -8,7 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getWorkSpaces } from '../../service/userApi';
-import { getMembers, deleteOrganization } from '../../service/organizationApi';
+import { getMembers, deleteOrganization, leaveOrganization } from '../../service/organizationApi';
 
 const OrganizationSettings = () => {
     const { orgUrl } = useParams();
@@ -34,6 +34,7 @@ const OrganizationSettings = () => {
     // Current Org
     const [currentOrgId, setCurrentOrgId] = useState(null);
     const [currentRole, setCurrentRole] = useState(null);
+    const [isOwner, setIsOwner] = useState(false);
 
     const fetchMembers = async (orgId) => {
         setIsLoadingMembers(true);
@@ -75,6 +76,7 @@ const OrganizationSettings = () => {
                     if (ws) {
                         setCurrentOrgId(ws.accountId);
                         setCurrentRole(ws.role);
+                        setIsOwner(ws.isOwner || false);
                         fetchMembers(ws.accountId);
                     }
                 }
@@ -89,6 +91,9 @@ const OrganizationSettings = () => {
     const [deleteInput, setDeleteInput] = useState('');
     const [showDelete, setShowDelete] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    
+    // Leave
+    const [isLeaving, setIsLeaving] = useState(false);
 
     const currentPlan = { name: 'Basic Plan', features: ['3 tài liệu/tháng', 'Chữ ký cơ bản', 'Lưu trữ 1GB'] };
 
@@ -124,6 +129,26 @@ const OrganizationSettings = () => {
             toast.error(msg);
         } finally {
             setIsDeleting(false);
+        }
+    };
+    
+    const handleLeaveOrg = async () => {
+        if (!currentOrgId) return;
+        if (!window.confirm('Bạn có chắc chắn muốn rời khỏi tổ chức này? Toàn bộ tài liệu chờ ký do bạn tải lên sẽ bị hủy.')) return;
+        
+        setIsLeaving(true);
+        try {
+            await leaveOrganization(currentOrgId);
+            toast.success('Bạn đã rời khỏi tổ chức thành công!');
+            // Sau khi rời, token hiện tại có thể không còn hiệu lực cho tổ chức này, ta load lại dashboard
+            setTimeout(() => {
+                window.location.href = '/dashboard';
+            }, 1000);
+        } catch (error) {
+            const msg = error?.response?.data?.message || 'Không thể rời tổ chức. Vui lòng thử lại.';
+            toast.error(msg);
+        } finally {
+            setIsLeaving(false);
         }
     };
 
@@ -322,9 +347,8 @@ const OrganizationSettings = () => {
                             <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-[0.2em] px-1">Ngôn ngữ mặc định</label>
                             <select 
                                 value={language} 
-                                disabled={currentRole !== 'ADMIN'}
                                 onChange={e => setLanguage(e.target.value)}
-                                className="w-full bg-secondary-50 border border-secondary-100 text-secondary-900 font-bold text-sm rounded-2xl px-5 py-4 focus:ring-4 focus:ring-primary-500/10 focus:outline-none disabled:opacity-70 disabled:cursor-not-allowed"
+                                className="w-full bg-secondary-50 border border-secondary-100 text-secondary-900 font-bold text-sm rounded-2xl px-5 py-4 focus:ring-4 focus:ring-primary-500/10 focus:outline-none"
                             >
                                 <option value="vi">Tiếng Việt (Vietnamese)</option>
                                 <option value="en">English (US)</option>
@@ -360,7 +384,8 @@ const OrganizationSettings = () => {
                         <motion.button 
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
-                            className="w-full mt-6 py-4 border-2 border-secondary-100 text-secondary-900 font-bold text-sm rounded-2xl hover:bg-secondary-50 transition-all flex items-center justify-center gap-2 group"
+                            disabled={currentRole !== 'ADMIN'}
+                            className="w-full mt-6 py-4 border-2 border-secondary-100 text-secondary-900 font-bold text-sm rounded-2xl hover:bg-secondary-50 transition-all flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Nâng cấp lên Pro
                             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -370,86 +395,114 @@ const OrganizationSettings = () => {
             </div>
 
             {/* 4 - Danger Zone */}
-            {currentRole === 'ADMIN' && (
-                <motion.section variants={sectionVariants} className="bg-red-50/30 rounded-[32px] border border-red-100 overflow-hidden shadow-premium">
-                    <div className="flex items-center gap-5 px-8 py-6 border-b border-red-100 bg-red-50/50">
-                        <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-600">
-                            <AlertTriangle className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-bold text-red-700 font-display">Vùng nguy hiểm</h2>
-                            <p className="text-sm font-medium text-red-500">Các hành động không thể hoàn tác</p>
-                        </div>
+            <motion.section variants={sectionVariants} className="bg-red-50/30 rounded-[32px] border border-red-100 overflow-hidden shadow-premium">
+                <div className="flex items-center gap-5 px-8 py-6 border-b border-red-100 bg-red-50/50">
+                    <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-600">
+                        <AlertTriangle className="w-6 h-6" />
                     </div>
-                    <div className="p-8">
-                        {!showDelete ? (
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                <div>
-                                    <h3 className="text-lg font-bold text-secondary-900 font-display mb-1">Xóa tổ chức vĩnh viễn</h3>
-                                    <p className="text-sm font-medium text-secondary-500 max-w-lg leading-relaxed">
-                                        Mọi dữ liệu, tài liệu, và toàn bộ hồ sơ thành viên sẽ bị xóa hoàn toàn khỏi hệ thống.
-                                    </p>
-                                </div>
-                                <motion.button 
-                                    whileHover={{ scale: 1.05 }}
-                                    whileTap={{ scale: 0.95 }}
-                                    onClick={() => setShowDelete(true)}
-                                    className="flex items-center justify-center gap-3 px-8 py-4 bg-white border border-red-200 text-red-600 font-bold rounded-2xl hover:bg-red-600 hover:text-white transition-all shadow-sm"
-                                >
-                                    <Trash2 className="w-5 h-5" /> Xóa tổ chức
-                                </motion.button>
+                    <div>
+                        <h2 className="text-xl font-bold text-red-700 font-display">Vùng nguy hiểm</h2>
+                        <p className="text-sm font-medium text-red-500">Các hành động quan trọng ảnh hưởng đến tài khoản</p>
+                    </div>
+                </div>
+                <div className="p-8 space-y-8">
+                    {/* Rời tổ chức */}
+                    {!isOwner && (
+                        <div className={`flex flex-col md:flex-row md:items-center justify-between gap-6 ${currentRole === 'ADMIN' ? 'pb-8 border-b border-red-100/50' : ''}`}>
+                            <div>
+                                <h3 className="text-lg font-bold text-secondary-900 font-display mb-1">Rời khỏi tổ chức</h3>
+                                <p className="text-sm font-medium text-secondary-500 max-w-lg leading-relaxed">
+                                    Bạn sẽ mất quyền truy cập. Các tài liệu chờ ký do bạn tạo sẽ bị hủy tự động.
+                                </p>
                             </div>
-                        ) : (
-                            <motion.div 
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="space-y-6"
+                            <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={handleLeaveOrg}
+                                disabled={isLeaving}
+                                className="flex items-center justify-center gap-3 px-8 py-4 bg-white border border-red-200 text-red-600 font-bold rounded-2xl hover:bg-red-600 hover:text-white transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <div className="p-6 bg-red-600 rounded-2xl text-white shadow-xl shadow-red-500/20">
-                                    <p className="text-sm font-bold flex items-center gap-2 mb-2">
-                                        <AlertTriangle className="w-5 h-5" /> Hành động này không thể hoàn tác!
-                                    </p>
-                                    <p className="text-sm opacity-90 leading-relaxed">Vui lòng nhập tên tổ chức <span className="font-black underline">"{orgName}"</span> để xác nhận việc xóa vĩnh viễn.</p>
-                                </div>
-                                <div className="flex flex-col md:flex-row gap-4 items-end">
-                                    <div className="flex-1 space-y-2">
-                                        <label className="text-[10px] font-bold text-red-600 uppercase tracking-widest px-1">Nhập tên tổ chức để xác nhận</label>
-                                        <input 
-                                            value={deleteInput} 
-                                            onChange={e => setDeleteInput(e.target.value)}
-                                            className="w-full bg-white border border-red-200 rounded-2xl px-5 py-4 text-secondary-900 font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all"
-                                            placeholder={orgName} 
-                                        />
+                                {isLeaving ? (
+                                    <><div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div> Đang xử lý...</>
+                                ) : (
+                                    <><UserMinus className="w-5 h-5" /> Rời tổ chức</>
+                                )}
+                            </motion.button>
+                        </div>
+                    )}
+
+                    {/* Xóa tổ chức */}
+                    {currentRole === 'ADMIN' && (
+                        <div>
+                            {!showDelete ? (
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-secondary-900 font-display mb-1">Xóa tổ chức vĩnh viễn</h3>
+                                        <p className="text-sm font-medium text-secondary-500 max-w-lg leading-relaxed">
+                                            Mọi dữ liệu, tài liệu, và toàn bộ hồ sơ thành viên sẽ bị xóa hoàn toàn khỏi hệ thống.
+                                        </p>
                                     </div>
-                                    <div className="flex gap-4">
-                                        <motion.button 
-                                            whileHover={{ scale: 1.02 }}
-                                            whileTap={{ scale: 0.98 }}
-                                            onClick={handleDeleteOrg} 
-                                            disabled={deleteInput !== orgName || isDeleting}
-                                            className="px-8 py-4 bg-red-600 text-white font-bold rounded-2xl shadow-xl shadow-red-500/20 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-                                        >
-                                            {isDeleting ? (
-                                                <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Đang xóa...</>
-                                            ) : (
-                                                <><Trash2 className="w-5 h-5" /> Xóa vĩnh viễn</>
-                                            )}
-                                        </motion.button>
-                                        <motion.button 
-                                            whileHover={{ scale: 1.02 }}
-                                            whileTap={{ scale: 0.98 }}
-                                            onClick={() => { setShowDelete(false); setDeleteInput(''); }}
-                                            className="px-8 py-4 bg-white border border-secondary-200 text-secondary-600 font-bold rounded-2xl hover:bg-secondary-50 transition-all shadow-sm flex items-center gap-2"
-                                        >
-                                            <X className="w-5 h-5" /> Hủy bỏ
-                                        </motion.button>
-                                    </div>
+                                    <motion.button 
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
+                                        onClick={() => setShowDelete(true)}
+                                        className="flex items-center justify-center gap-3 px-8 py-4 bg-white border border-red-200 text-red-600 font-bold rounded-2xl hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                                    >
+                                        <Trash2 className="w-5 h-5" /> Xóa tổ chức
+                                    </motion.button>
                                 </div>
-                            </motion.div>
-                        )}
-                    </div>
-                </motion.section>
-            )}
+                            ) : (
+                                <motion.div 
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="space-y-6"
+                                >
+                                    <div className="p-6 bg-red-600 rounded-2xl text-white shadow-xl shadow-red-500/20">
+                                        <p className="text-sm font-bold flex items-center gap-2 mb-2">
+                                            <AlertTriangle className="w-5 h-5" /> Hành động này không thể hoàn tác!
+                                        </p>
+                                        <p className="text-sm opacity-90 leading-relaxed">Vui lòng nhập tên tổ chức <span className="font-black underline">"{orgName}"</span> để xác nhận việc xóa vĩnh viễn.</p>
+                                    </div>
+                                    <div className="flex flex-col md:flex-row gap-4 items-end">
+                                        <div className="flex-1 space-y-2">
+                                            <label className="text-[10px] font-bold text-red-600 uppercase tracking-widest px-1">Nhập tên tổ chức để xác nhận</label>
+                                            <input 
+                                                value={deleteInput} 
+                                                onChange={e => setDeleteInput(e.target.value)}
+                                                className="w-full bg-white border border-red-200 rounded-2xl px-5 py-4 text-secondary-900 font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all"
+                                                placeholder={orgName} 
+                                            />
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <motion.button 
+                                                whileHover={{ scale: 1.02 }}
+                                                whileTap={{ scale: 0.98 }}
+                                                onClick={handleDeleteOrg} 
+                                                disabled={deleteInput !== orgName || isDeleting}
+                                                className="px-8 py-4 bg-red-600 text-white font-bold rounded-2xl shadow-xl shadow-red-500/20 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                                            >
+                                                {isDeleting ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Đang xóa...</>
+                                                ) : (
+                                                    <><Trash2 className="w-5 h-5" /> Xóa vĩnh viễn</>
+                                                )}
+                                            </motion.button>
+                                            <motion.button 
+                                                whileHover={{ scale: 1.02 }}
+                                                whileTap={{ scale: 0.98 }}
+                                                onClick={() => { setShowDelete(false); setDeleteInput(''); }}
+                                                className="px-8 py-4 bg-white border border-secondary-200 text-secondary-600 font-bold rounded-2xl hover:bg-secondary-50 transition-all shadow-sm flex items-center gap-2"
+                                            >
+                                                <X className="w-5 h-5" /> Hủy bỏ
+                                            </motion.button>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </motion.section>
         </motion.div>
     );
 };

@@ -8,6 +8,7 @@ import AddOrganizationModal from '../Modal/AddOrganizationModal';
 import InviteMemberModal from '../Modal/InviteMemberModal';
 import { useCreateWorkspace } from '../../hooks/useCreateWorkspace';
 import { motion, AnimatePresence } from 'framer-motion';
+import NotificationBell from './NotificationBell';
 
 const Header = () => {
     const navigate = useNavigate();
@@ -129,10 +130,7 @@ const Header = () => {
                     </motion.button>
 
                     {/* Bell Notification */}
-                    <button className="relative p-3 rounded-2xl text-secondary-400 hover:bg-secondary-50 hover:text-secondary-700 transition-all">
-                        <Bell className="w-5 h-5" />
-                        <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white" />
-                    </button>
+                    <NotificationBell />
 
                     {/* Profile Menu Dropdown */}
                     <div className="relative" ref={dropdownRef}>

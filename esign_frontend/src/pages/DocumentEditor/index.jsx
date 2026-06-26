@@ -10,7 +10,7 @@ import { toast } from 'react-toastify';
 import { sendDocumentFlow } from './services/sendHandlers';
 import { validateBeforeSend } from './services/validators';
 import { deleteDocument, sendDocument } from '../../service/documentApi';
-import { searchUsersByEmail } from '../../service/userApi';
+import { searchUsersByEmail, getWorkSpaces } from '../../service/userApi';
 
 // Constants & Hooks
 import { fieldTypes, steps, quickActions } from './constants';
@@ -74,6 +74,7 @@ const DocumentEditor = () => {
     const [isStepAnimating, setIsStepAnimating] = useState(false);
     const [previewFileIndex, setPreviewFileIndex] = useState(0);
     const [previewNumPages, setPreviewNumPages] = useState(0);
+    const [expiresAt, setExpiresAt] = useState(null);
 
     // ─── Hook: Load Draft ───
     const { isLoading } = useLoadDraft({
@@ -97,6 +98,24 @@ const DocumentEditor = () => {
         enableSigningOrder,
         orgUrl
     });
+
+    // ─── Permission Guard ───
+    useEffect(() => {
+        if (orgUrl) {
+            getWorkSpaces().then(res => {
+                if (res && res.result) {
+                    const ws = res.result.find(w => w.accountUrl === orgUrl);
+                    if (ws) {
+                        const canUpload = ws.role === 'ADMIN' || ws.canUpload;
+                        if (!canUpload) {
+                            toast.error('Bạn không có quyền tải lên tài liệu mới.');
+                            navigate(`/o/${orgUrl}/documents`);
+                        }
+                    }
+                }
+            }).catch(console.error);
+        }
+    }, [orgUrl, navigate]);
 
     // ─── PDF Callbacks ───
     const onDocumentLoadSuccess = ({ numPages }) => setNumPages(numPages);
@@ -229,6 +248,10 @@ const DocumentEditor = () => {
 
     const updateFieldSize = (id, newWidth, newHeight) => {
         setFields(prev => prev.map(f => f.id === id ? { ...f, width: newWidth, height: newHeight } : f));
+    };
+
+    const updateField = (id, updates) => {
+        setFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
     };
 
     // ═══════════════════════════════════════════
@@ -467,6 +490,16 @@ const DocumentEditor = () => {
                 return;
             }
         }
+        // Validate expiresAt bắt buộc
+        if (!expiresAt) {
+            toast.error('Vui lòng đặt thời hạn ký cho tài liệu.');
+            return;
+        }
+        const expDate = new Date(expiresAt);
+        if (expDate <= new Date()) {
+            toast.error('Thời hạn ký phải là thời điểm trong tương lai.');
+            return;
+        }
 
         // Validate chữ ký: mỗi người nhận + mỗi file phải có ít nhất 1 trường SIGNATURE
         const validation = validateBeforeSend(recipients, fields, uploadedFiles);
@@ -477,7 +510,7 @@ const DocumentEditor = () => {
 
         await sendDocumentFlow({
             id, uploadedFiles, documentName, recipients, enableSigningOrder, fields, signatureFontSize,
-            sendDocument, toast, navigate, setIsSending, orgUrl
+            sendDocument, toast, navigate, setIsSending, orgUrl, expiresAt
         });
     };
 
@@ -537,6 +570,8 @@ const DocumentEditor = () => {
                                 canProceed={canProceed}
                                 goToStep={goToStep}
                                 isStepAnimating={isStepAnimating}
+                                expiresAt={expiresAt}
+                                setExpiresAt={setExpiresAt}
                             />
                         )}
 
@@ -555,6 +590,7 @@ const DocumentEditor = () => {
                                 fieldTypes={fieldTypes}
                                 removeField={removeField}
                                 updateFieldSize={updateFieldSize}
+                                updateField={updateField}
                                 pdfScrollRef={pdfScrollRef}
                                 selectedRecipient={selectedRecipient}
                                 setSelectedRecipient={setSelectedRecipient}
@@ -580,6 +616,8 @@ const DocumentEditor = () => {
                                 handleSendDocument={handleSendDocument}
                                 goToStep={goToStep}
                                 isStepAnimating={isStepAnimating}
+                                expiresAt={expiresAt}
+                                setExpiresAt={setExpiresAt}
                             />
                         )}
 

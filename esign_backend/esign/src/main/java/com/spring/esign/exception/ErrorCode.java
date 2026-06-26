@@ -43,7 +43,12 @@ public enum ErrorCode {
     DOCUMENT_CANNOT_CANCEL(1033, "Tài liệu không thể hủy ở trạng thái hiện tại", HttpStatus.CONFLICT),
     DOCUMENT_CANNOT_DELETE(
             1034, "Không thể xóa tài liệu đang trong quá trình ký hoặc đã hoàn tất", HttpStatus.CONFLICT),
-    ORGANIZATION_DELETED(1036, "Tổ chức này đã bị xóa hoặc không hoạt động", HttpStatus.FORBIDDEN);
+    LEAVE_ALL_ORGS_FIRST(1037, "Vui lòng rời hoặc xóa tất cả tổ chức trước khi xóa tài khoản", HttpStatus.BAD_REQUEST),
+    ORGANIZATION_DELETED(1036, "Tổ chức này đã bị xóa hoặc không hoạt động", HttpStatus.FORBIDDEN),
+    DOCUMENT_VERSION_CONFLICT(
+            1038,
+            "Tài liệu đã được cập nhật bởi một người ký khác. Vui lòng ký phiên bản mới nhất.",
+            HttpStatus.CONFLICT);
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
         this.code = code;

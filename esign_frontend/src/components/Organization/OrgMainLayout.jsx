@@ -9,6 +9,7 @@ const OrgMainLayout = () => {
     const { orgUrl } = useParams();
     const location = useLocation();
     const [orgName, setOrgName] = useState('Đang tải...');
+    const [orgId, setOrgId] = useState(null);
 
     useEffect(() => {
         const fetchOrgDetails = async () => {
@@ -19,6 +20,7 @@ const OrgMainLayout = () => {
                     const ws = res.result.find(w => w.accountUrl === orgUrl);
                     if (ws) {
                         setOrgName(ws.accountName);
+                        setOrgId(ws.accountId);
                     } else {
                         setOrgName(orgUrl.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
                     }
@@ -50,7 +52,7 @@ const OrgMainLayout = () => {
                             transition={{ duration: 0.3, ease: "easeOut" }}
                             className="max-w-7xl mx-auto w-full"
                         >
-                            <Outlet context={{ orgName, orgUrl }} />
+                            <Outlet context={{ orgId, orgName, orgUrl }} />
                         </motion.div>
                     </AnimatePresence>
                 </main>

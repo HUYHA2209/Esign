@@ -74,3 +74,8 @@ export const updateUserProfile = async (profile) => {
     return response.data.result;
 }
 
+export const deleteAccount = async () => {
+    const response = await apiClient.delete("/users/me");
+    return response.data;
+}
+

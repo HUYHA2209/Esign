@@ -161,8 +161,9 @@ public class DocumentService {
                 if (sd.getEmail() == null || sd.getEmail().isBlank()) {
                     throw new AppException(ErrorCode.INVALID_INPUT);
                 }
-                String key = sd.getEmail().toLowerCase();
-                User signerUser = emailToUserMap.get(key);
+                String emailKey = sd.getEmail().toLowerCase();
+                String key = emailKey + "_" + (sd.getAccountId() != null ? sd.getAccountId() : "personal");
+                User signerUser = emailToUserMap.get(emailKey);
                 if (signerUser == null) {
                     throw new AppException(ErrorCode.USER_NOT_EXISTED);
                 }
@@ -191,14 +192,20 @@ public class DocumentService {
             List<DocumentSigner> saved = documentSignerRepository.saveAll(signersToSave);
             // Rebuild map with DB-assigned IDs
             Map<String, DocumentSigner> savedMap = new HashMap<>();
-            for (DocumentSigner ds : saved) savedMap.put(ds.getSignerEmail().toLowerCase(), ds);
+            for (DocumentSigner ds : saved) {
+                String k = ds.getSignerEmail().toLowerCase() + "_"
+                        + (ds.getAccount() != null ? ds.getAccount().getAccountId() : "personal");
+                savedMap.put(k, ds);
+            }
 
             // Build fields
             List<SignatureField> newFields = new ArrayList<>();
             for (Object[] b : bundles) {
                 SignerDto sd = (SignerDto) b[0];
                 FieldRequest f = (FieldRequest) b[1];
-                DocumentSigner ds = savedMap.get(sd.getEmail().toLowerCase());
+                String fieldKey = sd.getEmail().toLowerCase() + "_"
+                        + (sd.getAccountId() != null ? sd.getAccountId() : "personal");
+                DocumentSigner ds = savedMap.get(fieldKey);
                 if (ds == null) continue;
                 newFields.add(SignatureField.builder()
                         .document(doc)
@@ -383,13 +390,13 @@ public class DocumentService {
                     com.spring.esign.enums.AuditEvent.VOIDED,
                     user,
                     null,
+                    doc.getOriginalFileHash(),
+                    doc.getOriginalFileHash(),
                     null,
                     null,
                     null,
-                    null,
-                    null,
-                    null,
-                    null);
+                    getClientIp(),
+                    getUserAgent());
 
             List<DocumentSigner> signers = documentSignerRepository.findByDocument_DocumentId(doc.getDocumentId());
             for (DocumentSigner ds : signers) {
@@ -523,12 +530,20 @@ public class DocumentService {
                 groupMap.put(key, resp);
                 if (groupId != null) groupIds.add(groupId);
             } else {
-                // Aggregate signerStatus: if any document is PENDING for this user, the group
-                // is PENDING.
+                // Aggregate signerStatus: PENDING > DECLINED > SIGNED
                 DocumentResponse resp = groupMap.get(key);
-                if (ds.getStatus() != null
-                        && (ds.getStatus() == SignerStatus.WAITING || ds.getStatus() == SignerStatus.VIEWED)) {
-                    resp.setSignerStatus("PENDING");
+                if (ds.getStatus() != null) {
+                    boolean isCurrentPending =
+                            (ds.getStatus() == SignerStatus.WAITING || ds.getStatus() == SignerStatus.VIEWED);
+                    boolean isCurrentDeclined = (ds.getStatus() == SignerStatus.DECLINED);
+
+                    if ("PENDING".equals(resp.getSignerStatus())) {
+                        // Already PENDING, keep it
+                    } else if (isCurrentPending) {
+                        resp.setSignerStatus("PENDING");
+                    } else if (isCurrentDeclined) {
+                        resp.setSignerStatus("DECLINED");
+                    }
                 }
             }
         }
@@ -538,7 +553,7 @@ public class DocumentService {
             List<Object[]> counts = documentRepository.countDocumentsPerGroup(groupIds);
             Map<Integer, Long> fileCountMap = new HashMap<>();
             for (Object[] row : counts) {
-                fileCountMap.put((Integer) row[0], (Long) row[1]);
+                fileCountMap.put((Integer) row[0], (Long) row[1]); // group row[0] có row[1] tài liệu
             }
             for (DocumentResponse resp : groupMap.values()) {
                 if (resp.getGroupId() != null) {
@@ -562,6 +577,15 @@ public class DocumentService {
         String userId = authentication.getName();
         permissionChecker.requireMembership(accountId, userId);
 
+        // IDOR protection: verify group thuộc account hiện tại
+        DocumentGroup group = documentGroupRepository.findByGroupId(groupId);
+        if (group == null) {
+            throw new AppException(ErrorCode.DOCUMENT_NOT_FOUND);
+        }
+        if (!group.getAccount().getAccountId().equals(accountId)) {
+            throw new AppException(ErrorCode.USER_NO_PERMISSION);
+        }
+
         List<Document> documents = documentRepository.findByDocumentGroup_GroupId(groupId);
         return documents.stream().map(this::toDocumentResponse).toList();
     }
@@ -581,6 +605,11 @@ public class DocumentService {
         DocumentGroup group = documentGroupRepository.findByGroupId(groupId);
         if (group == null) {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+
+        // IDOR protection: verify group thuộc account hiện tại
+        if (!group.getAccount().getAccountId().equals(accountId)) {
+            throw new AppException(ErrorCode.USER_NO_PERMISSION);
         }
 
         List<Document> documents = documentRepository.findByDocumentGroup_GroupId(groupId);
@@ -756,6 +785,20 @@ public class DocumentService {
                 doc.setStatus(DocumentStatus.EXPIRED);
             }
 
+            // Audit Trail: EXPIRED
+            auditTrailService.logEvent(
+                    doc,
+                    com.spring.esign.enums.AuditEvent.EXPIRED,
+                    null,
+                    null,
+                    doc.getOriginalFileHash(),
+                    doc.getOriginalFileHash(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+
             // Mark WAITING/VIEWED signers as EXPIRED (keep SIGNED ones)
             List<DocumentSigner> signers = documentSignerRepository.findByDocument_DocumentId(doc.getDocumentId());
             for (DocumentSigner ds : signers) {
@@ -767,6 +810,41 @@ public class DocumentService {
             }
             documentSignerRepository.saveAll(signers);
         }
+
+        if (!documents.isEmpty()) {
+            User uploader = documents.get(0).getUploadedBy();
+            String title = "Tài liệu đã hết hạn";
+            String message = "Nhóm tài liệu \"" + group.getGroupName()
+                    + "\" đã hết hạn do không được xử lý trong thời gian quy định.";
+
+            // Gửi thông báo cho Uploader
+            notificationsService.sendToUser(
+                    uploader.getEmail(),
+                    com.spring.esign.enums.Notifications.DOCUMENT_EXPIRED,
+                    title,
+                    message,
+                    groupId,
+                    "Hệ thống",
+                    "system@esign.com");
+
+            // Gửi thông báo cho tất cả những người ký (Recipients) - Đã tối ưu truy vấn N+1
+            List<DocumentSigner> allSigners = documentSignerRepository.findByDocument_DocumentGroup_GroupId(groupId);
+            Set<String> notifiedEmails = new HashSet<>();
+            for (DocumentSigner ds : allSigners) {
+                if (notifiedEmails.add(ds.getSignerEmail())
+                        && !ds.getSignerEmail().equals(uploader.getEmail())) {
+                    notificationsService.sendToUser(
+                            ds.getSignerEmail(),
+                            com.spring.esign.enums.Notifications.DOCUMENT_EXPIRED,
+                            title,
+                            message,
+                            groupId,
+                            "Hệ thống",
+                            "system@esign.com");
+                }
+            }
+        }
+
         documentRepository.saveAll(documents);
     }
 
@@ -787,13 +865,16 @@ public class DocumentService {
             throw new AppException(ErrorCode.USER_NO_PERMISSION);
         }
         if (logAudit) {
+            String downloadHash = (document.getFinalFileHash() != null)
+                    ? document.getFinalFileHash()
+                    : document.getOriginalFileHash();
             auditTrailService.logEvent(
                     document,
                     com.spring.esign.enums.AuditEvent.DOWNLOADED,
                     userRepository.findById(userId).orElse(null),
                     null,
-                    document.getOriginalFileHash(),
-                    document.getOriginalFileHash(),
+                    downloadHash,
+                    downloadHash,
                     null,
                     null,
                     null,
@@ -823,18 +904,23 @@ public class DocumentService {
         // Security: chỉ cần xác minh email của user nằm trong danh sách signer.
         // Tài liệu "nhận được" luôn thuộc workspace của NGƯỜI GỬI, không phải người nhận,
         // nên không cần so sánh docAccountId với accountId hiện tại.
+        Long accountId = extractAccountId(authentication);
+        String accountType = extractAccountType(authentication);
         DocumentSigner documentSigner = documentSignerRepository
-                .findByDocument_DocumentIdAndSignerEmail(documentId, user.getEmail())
+                .findByDocumentIdAndSignerEmailAndAccountIdFallback(documentId, user.getEmail(), accountId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NO_PERMISSION));
 
         if (logAudit) {
+            String downloadHash = (document.getFinalFileHash() != null)
+                    ? document.getFinalFileHash()
+                    : document.getOriginalFileHash();
             auditTrailService.logEvent(
                     document,
                     com.spring.esign.enums.AuditEvent.DOWNLOADED,
                     user,
                     documentSigner,
-                    document.getOriginalFileHash(),
-                    document.getOriginalFileHash(),
+                    downloadHash,
+                    downloadHash,
                     null,
                     null,
                     null,
@@ -867,6 +953,15 @@ public class DocumentService {
         return document;
     }
 
+    private String extractAccountType(Authentication authentication) {
+        if (authentication instanceof JwtAuthenticationToken jwtToken) {
+            return (String) jwtToken.getTokenAttributes().get("type");
+        } else if (authentication.getCredentials() instanceof Jwt jwt) {
+            return (String) jwt.getClaims().get("type");
+        }
+        return null;
+    }
+
     private Long extractAccountId(Authentication authentication) {
         if (authentication instanceof JwtAuthenticationToken jwtToken) {
             return (Long) jwtToken.getTokenAttributes().get("accountId");
@@ -877,6 +972,16 @@ public class DocumentService {
     }
 
     private DocumentResponse toDocumentResponse(Document document) {
+        DocumentStatus actualStatus = document.getStatus();
+        if (document.getDocumentGroup() != null && document.getDocumentGroup().getGr_status() != null) {
+            try {
+                actualStatus =
+                        DocumentStatus.valueOf(document.getDocumentGroup().getGr_status());
+            } catch (Exception e) {
+                // Ignore fallback
+            }
+        }
+
         return DocumentResponse.builder()
                 .documentId(document.getDocumentId())
                 .groupId(
@@ -888,7 +993,7 @@ public class DocumentService {
                                 ? document.getDocumentGroup().getGroupName()
                                 : "Untitled")
                 .originalFileUrl(document.getOriginalFileUrl())
-                .status(document.getStatus())
+                .status(actualStatus)
                 .createdAt(document.getCreatedAt())
                 .updatedAt(document.getUpdatedAt())
                 .uploadedBy(document.getUploadedBy().getEmail())
@@ -907,10 +1012,15 @@ public class DocumentService {
         String userId = authentication.getName();
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
         Long accountId = extractAccountId(authentication);
+        String accountType = extractAccountType(authentication);
 
         if (accountId == null) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
+
+        // Với Personal workspace, accountId vẫn được lưu là ID thực của Personal account,
+        // hoặc null nếu signer không được gán sẵn.
+        Long signerAccountId = accountId;
 
         // Không cần check docAccountId vs accountId vì tài liệu "nhận được"
         // luôn thuộc workspace của NGƯỜI GỬI. Query findReceivedDetail đã lọc theo
@@ -925,7 +1035,7 @@ public class DocumentService {
         // ── Lazy expiration check ──
         checkAndExpireGroup(groupId);
 
-        List<Object[]> rows = documentRepository.findReceivedDetail(groupId, user.getEmail());
+        List<Object[]> rows = documentRepository.findReceivedDetail(groupId, user.getEmail(), signerAccountId);
 
         if (rows.isEmpty()) return null;
 
@@ -1028,28 +1138,22 @@ public class DocumentService {
         for (Document d : documents) docIdToDoc.put(d.getDocumentId(), d);
 
         // ── 3. Delete signers (+ their fields cascade) ──
-        List<String> deletedEmails = request.getDeletedSignerEmails();
-        if (deletedEmails != null && !deletedEmails.isEmpty()) {
-            for (Integer docId : docIds) {
-                List<DocumentSigner> signersToDelete = new ArrayList<>();
-                for (String email : deletedEmails) {
-                    documentSignerRepository
-                            .findByDocument_DocumentIdAndSignerEmail(docId, email)
-                            .ifPresent(signersToDelete::add);
-                }
-                for (DocumentSigner ds : signersToDelete) {
-                    List<SignatureField> signerFields = signatureFieldRepository.findByDocument_DocumentId(docId);
-                    List<Integer> fieldIdsToRemove = signerFields.stream()
-                            .filter(sf -> sf.getDocSigner() != null
-                                    && sf.getDocSigner().getDocSignerId().equals(ds.getDocSignerId()))
-                            .map(SignatureField::getFieldId)
-                            .toList();
-                    if (!fieldIdsToRemove.isEmpty()) {
-                        signatureFieldRepository.deleteByFieldIdIn(fieldIdsToRemove);
-                    }
+        List<Integer> deletedDocSignerIds = request.getDeletedDocSignerIds();
+        if (deletedDocSignerIds != null && !deletedDocSignerIds.isEmpty()) {
+            List<DocumentSigner> signersToDelete = documentSignerRepository.findAllById(deletedDocSignerIds);
+            for (DocumentSigner ds : signersToDelete) {
+                List<SignatureField> signerFields = signatureFieldRepository.findByDocument_DocumentId(
+                        ds.getDocument().getDocumentId());
+                List<Integer> fieldIdsToRemove = signerFields.stream()
+                        .filter(sf -> sf.getDocSigner() != null
+                                && sf.getDocSigner().getDocSignerId().equals(ds.getDocSignerId()))
+                        .map(SignatureField::getFieldId)
+                        .toList();
+                if (!fieldIdsToRemove.isEmpty()) {
+                    signatureFieldRepository.deleteByFieldIdIn(fieldIdsToRemove);
                 }
             }
-            documentSignerRepository.deleteByDocumentIdsAndEmails(docIds, deletedEmails);
+            documentSignerRepository.deleteAllByIdInBatch(deletedDocSignerIds);
         }
 
         // ── 4. Delete specific fields by ID ──
@@ -1089,13 +1193,15 @@ public class DocumentService {
 
                 for (UpsertSignerRequest sr : request.getUpsertSigners()) {
                     if (sr.getEmail() == null || sr.getEmail().isBlank()) continue;
-                    String emailKey = sr.getEmail().trim().toLowerCase();
+                    String emailKey = sr.getEmail().trim().toLowerCase() + "_"
+                            + (sr.getAccountId() != null ? sr.getAccountId() : "personal");
 
-                    User signerUser = emailToUser.get(emailKey);
+                    User signerUser = emailToUser.get(sr.getEmail().trim().toLowerCase());
                     if (signerUser == null) throw new AppException(ErrorCode.USER_NOT_EXISTED);
 
                     Optional<DocumentSigner> existingOpt =
-                            documentSignerRepository.findByDocument_DocumentIdAndSignerEmail(docId, sr.getEmail());
+                            documentSignerRepository.findByDocumentIdAndSignerEmailAndAccountIdFallback(
+                                    docId, sr.getEmail(), sr.getAccountId());
 
                     DocumentSigner ds;
                     if (existingOpt.isPresent()) {
@@ -1105,11 +1211,18 @@ public class DocumentService {
                         ds.setSigningOrder(sr.getSigningOrder() == null ? 1 : sr.getSigningOrder());
                         ds.setSigningMode(authMode);
                     } else {
+                        Account targetAccount = null;
+                        if (sr.getAccountId() != null) {
+                            targetAccount = accountRepository
+                                    .findById(sr.getAccountId())
+                                    .orElse(null);
+                        }
                         ds = DocumentSigner.builder()
                                 .document(doc)
                                 .signerEmail(sr.getEmail())
                                 .signerName(sr.getName())
                                 .user(signerUser)
+                                .account(targetAccount)
                                 .role(sr.getRole() == null ? "signer" : sr.getRole())
                                 .signingOrder(sr.getSigningOrder() == null ? 1 : sr.getSigningOrder())
                                 .signingMode(authMode)
@@ -1131,14 +1244,16 @@ public class DocumentService {
                 Document targetDoc = docIdToDoc.get(fr.getDocumentId());
                 if (targetDoc == null) continue;
 
-                String emailKey = fr.getRecipientEmail().trim().toLowerCase();
+                String emailKey = fr.getRecipientEmail().trim().toLowerCase() + "_"
+                        + (fr.getAccountId() != null ? fr.getAccountId() : "personal");
 
                 DocumentSigner ds = null;
                 Map<String, DocumentSigner> docMap = signerLookup.get(fr.getDocumentId());
                 if (docMap != null) ds = docMap.get(emailKey);
                 if (ds == null) {
                     ds = documentSignerRepository
-                            .findByDocument_DocumentIdAndSignerEmail(fr.getDocumentId(), fr.getRecipientEmail())
+                            .findByDocumentIdAndSignerEmailAndAccountIdFallback(
+                                    fr.getDocumentId(), fr.getRecipientEmail(), fr.getAccountId())
                             .orElse(null);
                 }
                 if (ds == null) continue;

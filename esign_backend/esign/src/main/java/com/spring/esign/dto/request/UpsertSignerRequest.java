@@ -14,4 +14,5 @@ public class UpsertSignerRequest {
     String name;
     String role;
     Integer signingOrder;
+    Long accountId; // distinguish identical emails by account
 }

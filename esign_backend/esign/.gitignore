@@ -36,3 +36,7 @@ build/
 .env
 *.env
 !.env.example
+
+### Logs ###
+*.log
+compile*.txt

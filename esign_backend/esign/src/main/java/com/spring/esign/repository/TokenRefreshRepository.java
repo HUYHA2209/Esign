@@ -8,4 +8,6 @@ import com.spring.esign.entity.RefreshToken;
 
 public interface TokenRefreshRepository extends JpaRepository<RefreshToken, String> {
     Optional<RefreshToken> findByToken(String token);
+
+    void deleteByUser_Id(String userId);
 }

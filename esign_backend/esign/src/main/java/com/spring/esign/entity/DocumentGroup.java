@@ -9,7 +9,9 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 @Entity
-@Table(name = "DOCUMENT_GROUP")
+@Table(
+        name = "DOCUMENT_GROUP",
+        indexes = {@Index(name = "idx_group_status_expires", columnList = "group_status, expires_at")})
 @Data
 @Builder
 @NoArgsConstructor

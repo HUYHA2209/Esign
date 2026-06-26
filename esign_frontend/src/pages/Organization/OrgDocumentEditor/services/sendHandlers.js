@@ -13,17 +13,18 @@ export async function sendDocumentFlow({
     toast,
     navigate,
     setIsSending,
-    orgUrl
+    orgUrl,
+    expiresAt
 }) {
     setIsSending(true);
     try {
 
-        // Build explicit payload with helper for clarity and easier backend mapping
         const payload = buildSendPayload({
             message: 'Vui lòng xem và ký tài liệu này.',
             recipients,
             fields,
-            enableSigningOrder
+            enableSigningOrder,
+            expiresAt
         });
 
         // normalize fontSize into each field

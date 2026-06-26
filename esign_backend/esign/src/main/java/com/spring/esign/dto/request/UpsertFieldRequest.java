@@ -15,4 +15,5 @@ public class UpsertFieldRequest {
     Integer documentId; // target document
     Float x, y, width, height;
     String recipientEmail; // link to signer by email
+    Long accountId; // link to signer by accountId (null for personal)
 }

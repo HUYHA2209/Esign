@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { logoutUser, getWorkSpaces } from '../../service/userApi';
 import { motion, AnimatePresence } from 'framer-motion';
 import InviteMemberModal from '../Modal/InviteMemberModal';
+import NotificationBell from '../Layout/NotificationBell';
 
 const OrgHeader = ({ orgUrl, orgName }) => {
     const navigate = useNavigate();
@@ -17,6 +18,12 @@ const OrgHeader = ({ orgUrl, orgName }) => {
     const [currentOrgId, setCurrentOrgId] = useState(null);
     const [currentRole, setCurrentRole] = useState(null);
     const [canInvite, setCanInvite] = useState(false);
+    const [inviterPermissions, setInviterPermissions] = useState({
+        canInvite: false,
+        canSign: false,
+        canUpload: false,
+        canViewDocs: false
+    });
 
     useEffect(() => {
         if (!orgUrl) return;
@@ -29,6 +36,12 @@ const OrgHeader = ({ orgUrl, orgName }) => {
                         setCurrentOrgId(ws.accountId);
                         setCurrentRole(ws.role);
                         setCanInvite(ws.canInvite);
+                        setInviterPermissions({
+                            canInvite: ws.canInvite,
+                            canSign: ws.canSign,
+                            canUpload: ws.canUpload,
+                            canViewDocs: ws.canViewDocs
+                        });
                     }
                 }
             } catch (err) {
@@ -84,10 +97,7 @@ const OrgHeader = ({ orgUrl, orgName }) => {
                 )}
 
                 {/* Notification Bell */}
-                <button className="relative p-3 rounded-2xl text-secondary-400 hover:bg-secondary-50 hover:text-secondary-700 transition-all">
-                    <Bell className="w-5 h-5" />
-                    <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white" />
-                </button>
+                <NotificationBell />
 
                 {/* Avatar Dropdown */}
                 <div className="relative" ref={dropdownRef}>
@@ -160,6 +170,8 @@ const OrgHeader = ({ orgUrl, orgName }) => {
                 isOpen={isInviteModalOpen} 
                 onClose={() => setIsInviteModalOpen(false)} 
                 orgId={currentOrgId} 
+                inviterRole={currentRole}
+                inviterPermissions={inviterPermissions}
             />
         </header>
     );

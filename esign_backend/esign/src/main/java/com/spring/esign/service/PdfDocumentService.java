@@ -115,7 +115,10 @@ public class PdfDocumentService {
      * @return byte[] của file PDF đã được vẽ (Pre-sealed)
      */
     public byte[] burnVisualsToPdf(
-            InputStream originalPdfInputStream, Map<String, String> fieldValues, Integer documentId) {
+            InputStream originalPdfInputStream,
+            Map<String, String> fieldValues,
+            Integer documentId,
+            java.util.List<Integer> allowedSignerIds) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String userId = authentication.getName();
 
@@ -140,6 +143,10 @@ public class PdfDocumentService {
                     fieldValues.keySet());
 
             for (SignatureField field : fields) {
+                if (allowedSignerIds != null
+                        && !allowedSignerIds.contains(field.getDocSigner().getDocSignerId())) {
+                    continue; // Skip fields not belonging to the allowed signers
+                }
                 String fieldValue = fieldValues.get(String.valueOf(field.getFieldId()));
                 if (fieldValue == null || fieldValue.isEmpty()) {
                     log.info(

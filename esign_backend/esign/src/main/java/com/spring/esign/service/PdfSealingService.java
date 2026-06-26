@@ -62,10 +62,11 @@ public class PdfSealingService {
             // 2. Load PDF Document từ byte array
             PDDocument document = Loader.loadPDF(unsignedPdfBytes);
 
-            // 3. Append Audit Page directly to the document to avoid NPE in saveIncremental
-            if (auditTrail != null && ds != null) {
-                pdfDocumentService.appendAuditLogPageToDocument(document, auditTrail, ds);
-            }
+            // 3. (BỎ QUA) Không chèn trang Audit Log vào cuối PDF nữa để bảo mật thông tin nội bộ.
+            // Người nhận khi tải file Final PDF sẽ chỉ thấy hợp đồng và chữ ký.
+            // if (auditTrail != null && ds != null) {
+            //     pdfDocumentService.appendAuditLogPageToDocument(document, auditTrail, ds);
+            // }
 
             // 4. Tạo Object Chữ ký (PDSignature) tích hợp vào PDF
             PDSignature signature = new PDSignature();

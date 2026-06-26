@@ -32,7 +32,8 @@ export function buildSendPayload({
     message = 'Vui lòng xem và ký tài liệu này.',
     recipients = [],
     fields = [],
-    enableSigningOrder = false
+    enableSigningOrder = false,
+    expiresAt = null
 }) {
     const validRecipients = recipients.filter(r => r.email && r.email.trim() !== '');
 
@@ -62,7 +63,7 @@ export function buildSendPayload({
         };
     });
 
-    return { message, signers, enableSigningOrder };
+    return { message, signers, enableSigningOrder, expiresAt };
 }
 
 export default buildSendPayload;

@@ -9,8 +9,12 @@ import java.util.stream.Collectors;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -19,6 +23,7 @@ import com.spring.esign.entity.*;
 import com.spring.esign.enums.AuditEvent;
 import com.spring.esign.repository.AuditChainRepository;
 import com.spring.esign.repository.AuditTrailRepository;
+import com.spring.esign.repository.DocumentRepository;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -32,14 +37,20 @@ import lombok.extern.slf4j.Slf4j;
 public class AuditTrailService {
     AuditTrailRepository auditTrailRepository;
     AuditChainRepository auditChainRepository;
+    DocumentRepository documentRepository;
+    ApplicationEventPublisher eventPublisher;
 
     /**
-     * Log một sự kiện vào Audit Trail và chuỗi Audit Chain.
+     * Publish một AuditLogEvent. Event sẽ được xử lý SAU KHI transaction cha commit
+     * thành công → tránh deadlock do FK lock trên bảng Document.
      *
-     * Nếu IP hoặc deviceFingerprint là null, tự động lấy từ HttpServletRequest
-     * (sử dụng X-Forwarded-For cho IP và User-Agent cho device fingerprint).
+     * Nếu transaction cha rollback → event bị hủy → audit không ghi (đúng ý nghĩa:
+     * chỉ ghi audit cho các thao tác thành công).
+     *
+     * IP và deviceFingerprint được resolve ngay tại đây (trong context HTTP
+     * request),
+     * vì sau khi commit, request context có thể đã bị xóa.
      */
-    @Transactional
     public void logEvent(
             Document doc,
             AuditEvent eventType,
@@ -55,6 +66,7 @@ public class AuditTrailService {
 
         String resolvedSignerName = "Hệ thống";
         String resolvedSignerEmail = "system@esign.com";
+        String resolvedOrganizationName = null;
 
         if (user != null) {
             resolvedSignerName = user.getFullName() != null ? user.getFullName() : user.getEmail();
@@ -66,9 +78,16 @@ public class AuditTrailService {
                 resolvedSignerName = ds.getSignerName() != null ? ds.getSignerName() : ds.getSignerEmail();
             }
             resolvedSignerEmail = ds.getSignerEmail();
+            if (ds.getAccount() != null
+                    && ds.getAccount().getAccountType() == com.spring.esign.enums.AccountType.ORGANIZATION) {
+                resolvedOrganizationName = ds.getAccount().getAccountName();
+            }
+        } else if (doc.getAccount() != null
+                && doc.getAccount().getAccountType() == com.spring.esign.enums.AccountType.ORGANIZATION) {
+            resolvedOrganizationName = doc.getAccount().getAccountName();
         }
 
-        // Auto-resolve IP và User-Agent từ Request nếu chưa được truyền vào
+        // Resolve IP và User-Agent NGAY BÂY GIỜ (trong request context)
         if (ip == null) {
             ip = resolveClientIp();
         }
@@ -76,46 +95,92 @@ public class AuditTrailService {
             deviceFingerprint = resolveUserAgent();
         }
 
-        String eventDesc = getEventDescription(eventType, resolvedSignerName);
-
-        AuditTrail auditTrail = AuditTrail.builder()
-                .document(doc)
+        AuditLogEvent event = AuditLogEvent.builder()
+                .documentId(doc.getDocumentId())
                 .eventType(eventType)
-                .eventDescription(eventDesc)
                 .signerName(resolvedSignerName)
                 .signerEmail(resolvedSignerEmail)
+                .organizationName(resolvedOrganizationName)
                 .signerIp(ip)
                 .deviceFingerprint(deviceFingerprint)
-                // Document Integrity
                 .pdfHashBefore(pdfHashBefore)
                 .pdfHashAfter(pdfHashAfter)
-                // WebAuthn Data
                 .credentialId(credentialId)
                 .digitalSignature(digitalSignature)
                 .messageToSignHash(messageHash)
-                .keyAlgorithm(eventType == AuditEvent.SIGNED ? "WebAuthn-PAdES" : null)
-                .timestamp(LocalDateTime.now())
+                .timestamp(LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
                 .build();
 
-        auditTrail = auditTrailRepository.save(auditTrail);
+        eventPublisher.publishEvent(event);
+    }
 
-        AuditChain lastBlock = auditChainRepository
-                .findTopByAuditTrail_Document_DocumentIdOrderByCreatedAtDesc(doc.getDocumentId())
-                .orElse(null);
+    /**
+     * Listener xử lý AuditLogEvent SAU KHI transaction cha commit thành công.
+     * Chạy trong transaction riêng (REQUIRES_NEW) → không deadlock với transaction
+     * cha
+     * vì transaction cha đã kết thúc và giải phóng tất cả lock.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void handleAuditEvent(AuditLogEvent event) {
+        try {
+            Document doc = documentRepository.findById(event.getDocumentId()).orElse(null);
+            if (doc == null) {
+                log.error("Audit event bị bỏ qua: không tìm thấy document {}", event.getDocumentId());
+                return;
+            }
 
-        String prevHash = (lastBlock == null) ? null : lastBlock.getEntryHash();
+            AuditTrail auditTrail = AuditTrail.builder()
+                    .document(doc)
+                    .eventType(event.getEventType())
+                    .eventDescription(getEventDescription(
+                            event.getEventType(), event.getSignerName(), event.getOrganizationName()))
+                    .signerName(event.getSignerName())
+                    .signerEmail(event.getSignerEmail())
+                    .signerIp(event.getSignerIp())
+                    .deviceFingerprint(event.getDeviceFingerprint())
+                    .pdfHashBefore(event.getPdfHashBefore())
+                    .pdfHashAfter(event.getPdfHashAfter())
+                    .credentialId(event.getCredentialId())
+                    .digitalSignature(event.getDigitalSignature())
+                    .messageToSignHash(event.getMessageToSignHash())
+                    .keyAlgorithm(event.getEventType() == AuditEvent.SIGNED ? "WebAuthn-PAdES" : null)
+                    .timestamp(event.getTimestamp())
+                    .build();
 
-        String entryHash = hash(auditTrail.getAuditId() + "|" + auditTrail.getEventType()
-                + "|" + auditTrail.getTimestamp()
-                + "|" + auditTrail.getMessageToSignHash()
-                + "|" + prevHash);
+            auditTrail = auditTrailRepository.save(auditTrail);
 
-        AuditChain chain = AuditChain.builder()
-                .auditTrail(auditTrail)
-                .prevHash(prevHash)
-                .entryHash(entryHash)
-                .build();
-        auditChainRepository.save(chain);
+            // ── Audit Chain (Blockchain-like) ──
+            AuditChain lastBlock = auditChainRepository
+                    .findTopByAuditTrail_Document_DocumentIdOrderByCreatedAtDesc(doc.getDocumentId())
+                    .orElse(null);
+
+            String prevHash = (lastBlock == null) ? null : lastBlock.getEntryHash();
+
+            String entryHash = hash(auditTrail.getAuditId() + "|" + auditTrail.getEventType()
+                    + "|" + auditTrail.getTimestamp()
+                    + "|" + auditTrail.getMessageToSignHash()
+                    + "|" + auditTrail.getSignerEmail()
+                    + "|" + auditTrail.getSignerIp()
+                    + "|" + auditTrail.getPdfHashBefore()
+                    + "|" + auditTrail.getPdfHashAfter()
+                    + "|" + auditTrail.getCredentialId()
+                    + "|" + prevHash);
+
+            AuditChain chain = AuditChain.builder()
+                    .auditTrail(auditTrail)
+                    .prevHash(prevHash)
+                    .entryHash(entryHash)
+                    .build();
+            auditChainRepository.save(chain);
+
+            log.info("Audit logged: {} for document {}", event.getEventType(), event.getDocumentId());
+
+        } catch (Exception e) {
+            // Không throw — tránh ảnh hưởng business flow.
+            // Audit failure chỉ ghi log, không crash ứng dụng.
+            log.error("Lỗi khi ghi Audit Trail cho document {}: {}", event.getDocumentId(), e.getMessage(), e);
+        }
     }
 
     @Transactional
@@ -146,6 +211,8 @@ public class AuditTrailService {
                 .pdfHashBefore(trail.getPdfHashBefore())
                 .pdfHashAfter(trail.getPdfHashAfter())
                 .credentialId(trail.getCredentialId())
+                .digitalSignature(trail.getDigitalSignature())
+                .messageToSignHash(trail.getMessageToSignHash())
                 .keyAlgorithm(trail.getKeyAlgorithm())
                 .timestamp(trail.getTimestamp())
                 .build();
@@ -204,8 +271,11 @@ public class AuditTrailService {
         }
     }
 
-    private String getEventDescription(AuditEvent eventType, String signerName) {
+    private String getEventDescription(AuditEvent eventType, String signerName, String organizationName) {
         String name = (signerName != null && !signerName.isEmpty()) ? signerName : "Người dùng";
+        if (organizationName != null && !organizationName.isEmpty()) {
+            name = name + " (" + organizationName + ")";
+        }
         switch (eventType) {
             case UPLOAD:
                 return name + " đã tải lên tài liệu";

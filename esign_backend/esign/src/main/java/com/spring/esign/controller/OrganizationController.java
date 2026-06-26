@@ -27,9 +27,9 @@ public class OrganizationController {
     OrganizationService organizationService;
 
     @PostMapping("/create")
-    public ApiResponse<Void> createOrganization(@RequestBody OrganizationCreationRequest request) {
-        organizationService.createOrganization(request);
-        return ApiResponse.<Void>builder().build();
+    public ApiResponse<Long> createOrganization(@RequestBody OrganizationCreationRequest request) {
+        Long orgId = organizationService.createOrganization(request);
+        return ApiResponse.<Long>builder().result(orgId).build();
     }
 
     @PostMapping("/{orgId}/invitations")
@@ -89,5 +89,23 @@ public class OrganizationController {
     public ApiResponse<Void> deleteOrganization(@PathVariable Long orgId) {
         organizationService.deleteOrganization(orgId);
         return ApiResponse.<Void>builder().build();
+    }
+
+    @PostMapping("/{orgId}/leave")
+    public ApiResponse<Void> leaveOrganization(@PathVariable Long orgId) {
+        organizationService.leaveOrganization(orgId);
+        return ApiResponse.<Void>builder().build();
+    }
+
+    @GetMapping("/{orgId}/dashboard")
+    public ApiResponse<com.spring.esign.dto.response.OrgDashboardResponse> getDashboardOverview(
+            @PathVariable Long orgId) {
+        org.springframework.security.core.Authentication authentication =
+                org.springframework.security.core.context.SecurityContextHolder.getContext()
+                        .getAuthentication();
+        String userId = authentication.getName();
+        return ApiResponse.<com.spring.esign.dto.response.OrgDashboardResponse>builder()
+                .result(organizationService.getDashboardOverview(orgId, userId))
+                .build();
     }
 }

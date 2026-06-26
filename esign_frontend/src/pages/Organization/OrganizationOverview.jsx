@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     FileText, Users, CheckCircle2, Clock, TrendingUp,
     ArrowUpRight, FilePlus, UserPlus,
@@ -6,6 +6,13 @@ import {
 } from 'lucide-react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { getOrganizationDashboard, getMembers } from '../../service/organizationApi';
+
+const formatDate = (dateString) => {
+    const d = new Date(dateString);
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
 /* ── Stat Card ── */
 const StatCard = ({ icon: Icon, label, value, change, color, index }) => (
@@ -21,7 +28,7 @@ const StatCard = ({ icon: Icon, label, value, change, color, index }) => (
         </div>
         <div className="flex items-end justify-between">
             <div>
-                <p className="text-3xl font-bold text-secondary-900 font-display leading-none">{value}</p>
+                <p className="text-3xl font-bold text-secondary-900 font-display leading-none">{value < 10 && value > 0 ? `0${value}` : value}</p>
                 <p className="text-sm font-bold text-secondary-400 mt-2 uppercase tracking-widest">{label}</p>
             </div>
             {change && (
@@ -36,9 +43,11 @@ const StatCard = ({ icon: Icon, label, value, change, color, index }) => (
 /* ── Document Row ── */
 const DocRow = ({ name, status, date, assignee }) => {
     const statusStyle = {
-        'Chờ ký': 'bg-amber-50 text-amber-600 border-amber-100',
-        'Hoàn tất': 'bg-emerald-50 text-emerald-600 border-emerald-100',
-        'Đã gửi': 'bg-primary-50 text-primary-600 border-primary-100',
+        'PENDING': 'bg-amber-50 text-amber-600 border-amber-100',
+        'COMPLETED': 'bg-emerald-50 text-emerald-600 border-emerald-100',
+        'DRAFT': 'bg-primary-50 text-primary-600 border-primary-100',
+        'DECLINED': 'bg-red-50 text-red-600 border-red-100',
+        'VOID': 'bg-secondary-100 text-secondary-600 border-secondary-200'
     };
     return (
         <div className="flex items-center gap-5 px-8 py-5 hover:bg-secondary-50 transition-all cursor-pointer group border-b border-secondary-50 last:border-0">
@@ -71,32 +80,66 @@ const MemberCard = ({ name, role, avatar, color, docs }) => (
             <p className="text-sm font-bold text-secondary-900 truncate font-display">{name}</p>
             <p className="text-[10px] font-bold text-secondary-400 uppercase tracking-widest">{role}</p>
         </div>
-        <div className="text-right">
-            <p className="text-xs font-bold text-primary-600">{docs}</p>
-            <p className="text-[10px] font-bold text-secondary-400 uppercase">Tài liệu</p>
-        </div>
     </div>
 );
 
 /* ── Main Component ── */
 const OrganizationOverview = () => {
-    const { orgUrl, orgName } = useOutletContext();
+    const { orgId, orgUrl, orgName } = useOutletContext();
     const navigate = useNavigate();
 
-    const docs = [
-        { name: 'Hợp đồng dịch vụ Q1/2025', status: 'Chờ ký', date: 'Hôm nay, 09:30', assignee: 'NV' },
-        { name: 'Biên bản bàn giao dự án', status: 'Hoàn tất', date: 'Hôm qua, 14:15', assignee: 'TB' },
-        { name: 'Thỏa thuận bảo mật NDA', status: 'Đã gửi', date: '10/03/2025', assignee: 'LC' },
-        { name: 'Phụ lục hợp đồng số 3', status: 'Chờ ký', date: '09/03/2025', assignee: 'PD' },
-        { name: 'Báo cáo kiểm toán 2024', status: 'Hoàn tất', date: '07/03/2025', assignee: 'NV' },
-    ];
+    const [data, setData] = useState({
+        stats: { totalMembers: 0, totalDocuments: 0, completedDocuments: 0, pendingDocuments: 0 },
+        recentDocs: [],
+        recentActivities: [],
+        members: []
+    });
+    const [loading, setLoading] = useState(true);
 
-    const members = [
-        { name: 'Nguyễn Văn A', role: 'Chủ sở hữu', avatar: 'NV', color: 'from-indigo-400 to-purple-500', docs: 12 },
-        { name: 'Trần Thị B', role: 'Quản trị viên', avatar: 'TB', color: 'from-emerald-400 to-teal-500', docs: 8 },
-        { name: 'Lê Văn C', role: 'Thành viên', avatar: 'LC', color: 'from-amber-400 to-orange-500', docs: 5 },
-        { name: 'Phạm Thị D', role: 'Thành viên', avatar: 'PD', color: 'from-pink-400 to-rose-500', docs: 3 },
-    ];
+    useEffect(() => {
+        if (!orgId) return;
+        const fetchData = async () => {
+            try {
+                setLoading(true);
+                const [dashRes, membersRes] = await Promise.all([
+                    getOrganizationDashboard(orgId),
+                    getMembers(orgId)
+                ]);
+
+                setData({
+                    stats: {
+                        totalMembers: dashRes.result.totalMembers,
+                        totalDocuments: dashRes.result.totalDocuments,
+                        completedDocuments: dashRes.result.completedDocuments,
+                        pendingDocuments: dashRes.result.pendingDocuments
+                    },
+                    recentDocs: dashRes.result.recentDocuments || [],
+                    recentActivities: dashRes.result.recentActivities || [],
+                    members: membersRes.result.slice(0, 4) // Show top 4 members
+                });
+            } catch (error) {
+                console.error("Failed to fetch dashboard data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [orgId]);
+
+    const getIconForActivity = (type) => {
+        switch (type) {
+            case 'COMPLETED': return { icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-50 border-emerald-100' };
+            case 'VIEWED': return { icon: Zap, color: 'text-amber-500 bg-amber-50 border-amber-100' };
+            case 'CREATED': return { icon: FilePlus, color: 'text-blue-500 bg-blue-50 border-blue-100' };
+            case 'JOINED': return { icon: UserPlus, color: 'text-primary-500 bg-primary-50 border-primary-100' };
+            default: return { icon: Activity, color: 'text-secondary-500 bg-secondary-50 border-secondary-100' };
+        }
+    };
+
+    if (loading) {
+        return <div className="flex items-center justify-center h-full">Đang tải dữ liệu...</div>;
+    }
 
     const activity = [
         { icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-50 border-emerald-100', msg: '"Hợp đồng dịch vụ" đã được ký xong', time: '5 phút trước' },
@@ -117,10 +160,10 @@ const OrganizationOverview = () => {
 
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard icon={Users} label="Thành viên" value="12" change="+2" color="bg-primary-500" index={0} />
-                <StatCard icon={FileText} label="Tài liệu" value="48" change="+7" color="bg-blue-500" index={1} />
-                <StatCard icon={CheckCircle2} label="Đã hoàn tất" value="36" change="75%" color="bg-emerald-500" index={2} />
-                <StatCard icon={Clock} label="Đang chờ ký" value="08" color="bg-amber-500" index={3} />
+                <StatCard icon={Users} label="Thành viên" value={data.stats.totalMembers} color="bg-primary-500" index={0} />
+                <StatCard icon={FileText} label="Tài liệu" value={data.stats.totalDocuments} color="bg-blue-500" index={1} />
+                <StatCard icon={CheckCircle2} label="Đã hoàn tất" value={data.stats.completedDocuments} color="bg-emerald-500" index={2} />
+                <StatCard icon={Clock} label="Đang chờ ký" value={data.stats.pendingDocuments} color="bg-amber-500" index={3} />
             </div>
 
             {/* Main grid */}
@@ -147,7 +190,19 @@ const OrganizationOverview = () => {
                         </button>
                     </div>
                     <div className="divide-y divide-secondary-50">
-                        {docs.map((d, i) => <DocRow key={i} {...d} />)}
+                        {data.recentDocs.length === 0 ? (
+                            <div className="p-8 text-center text-secondary-500 text-sm">Chưa có tài liệu nào</div>
+                        ) : (
+                            data.recentDocs.map((d, i) => (
+                                <DocRow 
+                                    key={i} 
+                                    name={d.title} 
+                                    status={d.status} 
+                                    date={formatDate(d.createdAt)} 
+                                    assignee={d.uploadedBy ? d.uploadedBy.substring(0, 2).toUpperCase() : 'SYS'} 
+                                />
+                            ))
+                        )}
                     </div>
                 </motion.div>
 
@@ -169,10 +224,26 @@ const OrganizationOverview = () => {
                             </button>
                         </div>
                         <div className="p-4 space-y-2">
-                            {members.map((m, i) => <MemberCard key={i} {...m} />)}
+                            {data.members.length === 0 ? (
+                                <div className="p-4 text-center text-secondary-500 text-sm">Chưa có thành viên</div>
+                            ) : (
+                                data.members.map((m, i) => (
+                                    <MemberCard 
+                                        key={i} 
+                                        name={m.fullName || m.email} 
+                                        role={m.role === 'OWNER' ? 'Chủ sở hữu' : m.role === 'ADMIN' ? 'Quản trị viên' : 'Thành viên'} 
+                                        avatar={(m.fullName || m.email).substring(0, 2).toUpperCase()} 
+                                        color={m.role === 'OWNER' ? 'from-indigo-400 to-purple-500' : 'from-emerald-400 to-teal-500'} 
+                                    />
+                                ))
+                            )}
                         </div>
                         <div className="px-8 pb-6">
-                            <button className="w-full py-3 bg-secondary-50 text-secondary-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-secondary-100 transition-all border border-secondary-100">Mời thành viên</button>
+                            <button 
+                                onClick={() => navigate(`/o/${orgUrl}/members`)}
+                                className="w-full py-3 bg-secondary-50 text-secondary-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-secondary-100 transition-all border border-secondary-100">
+                                Quản lý thành viên
+                            </button>
                         </div>
                     </motion.div>
 
@@ -188,19 +259,26 @@ const OrganizationOverview = () => {
                             <h2 className="text-lg font-bold text-secondary-900 font-display">Luồng hoạt động</h2>
                         </div>
                         <div className="p-6 space-y-6">
-                            {activity.map((a, i) => (
-                                <div key={i} className="flex items-start gap-4 group">
-                                    <div className={`p-3 rounded-2xl flex-shrink-0 border transition-all group-hover:scale-110 ${a.color}`}>
-                                        <a.icon className="w-4 h-4" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-secondary-800 leading-relaxed group-hover:text-primary-600 transition-colors">{a.msg}</p>
-                                        <p className="text-[10px] font-bold text-secondary-400 mt-2 uppercase tracking-widest flex items-center gap-2">
-                                            <Clock className="w-3 h-3" /> {a.time}
-                                        </p>
-                                    </div>
-                                </div>
-                            ))}
+                            {data.recentActivities.length === 0 ? (
+                                <div className="text-center text-secondary-500 text-sm">Chưa có hoạt động nào</div>
+                            ) : (
+                                data.recentActivities.map((a, i) => {
+                                    const { icon: ActivityIcon, color } = getIconForActivity(a.type);
+                                    return (
+                                        <div key={i} className="flex items-start gap-4 group">
+                                            <div className={`p-3 rounded-2xl flex-shrink-0 border transition-all group-hover:scale-110 ${color}`}>
+                                                <ActivityIcon className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-secondary-800 leading-relaxed group-hover:text-primary-600 transition-colors">{a.message}</p>
+                                                <p className="text-[10px] font-bold text-secondary-400 mt-2 uppercase tracking-widest flex items-center gap-2">
+                                                    <Clock className="w-3 h-3" /> {formatDate(a.timestamp)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
                         </div>
                     </motion.div>
                 </div>

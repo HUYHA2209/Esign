@@ -1,7 +1,7 @@
 import React from 'react';
 import {
     FileText, Plus, X, Check, GripVertical, Mail, User,
-    Trash2, FileUp, ChevronRight
+    Trash2, FileUp, ChevronRight, CalendarClock
 } from 'lucide-react';
 import { formatFileSize } from '../constants';
 
@@ -23,12 +23,20 @@ const Step1Content = ({
     removeRecipient,
     enableSigningOrder,
     setEnableSigningOrder,
+    expiresAt,
+    setExpiresAt,
     // Navigation
     isStep1Complete,
     canProceed,
     goToStep,
     isStepAnimating,
 }) => {
+    // Logic for ExpiresAt
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    const minDateTime = now.toISOString().slice(0, 16);
+    const isExpired = expiresAt && new Date(expiresAt) <= new Date();
+
     return (
         <div className={`p-8 max-w-4xl mx-auto space-y-8 transition-all duration-300 ease-out ${isStepAnimating ? 'opacity-0 translate-x-2' : 'opacity-100 translate-x-0'}`}>
             {/* Documents Section */}
@@ -123,20 +131,64 @@ const Step1Content = ({
                     </div>
                 </div>
                 <div className="p-6">
-                    <label className="flex items-center gap-3 mb-6 cursor-pointer">
-                        <div className="relative">
+                    {/* ─── Thời hạn ký & Thứ tự ký ─── */}
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-6 mb-6 pb-6 border-b border-slate-100">
+                        {/* Thời hạn ký (bắt buộc) */}
+                        <div className="flex-1">
+                            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+                                <CalendarClock className="w-4 h-4 text-indigo-500" />
+                                Thời hạn ký
+                                <span className="text-red-500">*</span>
+                            </label>
                             <input
-                                type="checkbox"
-                                checked={enableSigningOrder}
-                                onChange={(e) => setEnableSigningOrder(e.target.checked)}
-                                className="sr-only"
+                                type="datetime-local"
+                                step="1"
+                                min={minDateTime}
+                                value={expiresAt || ''}
+                                onChange={(e) => setExpiresAt(e.target.value)}
+                                className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors ${
+                                    !expiresAt
+                                        ? 'border-amber-300 bg-amber-50/50'
+                                        : isExpired
+                                            ? 'border-red-400 bg-red-50'
+                                            : 'border-green-400 bg-green-50/50'
+                                }`}
                             />
-                            <div className={`w-10 h-6 rounded-full transition-colors ${enableSigningOrder ? 'bg-indigo-600' : 'bg-slate-200'}`}>
-                                <div className={`w-4 h-4 rounded-full bg-white shadow absolute top-1 transition-transform ${enableSigningOrder ? 'translate-x-5' : 'translate-x-1'}`} />
-                            </div>
+                            {!expiresAt && (
+                                <p className="mt-1.5 text-xs text-amber-600">
+                                    Bắt buộc — Vui lòng chọn thời hạn ký cho tài liệu
+                                </p>
+                            )}
+                            {isExpired && (
+                                <p className="mt-1.5 text-xs text-red-600">
+                                    Thời hạn đã qua, vui lòng chọn thời điểm trong tương lai
+                                </p>
+                            )}
+                            {expiresAt && !isExpired && (
+                                <p className="mt-1.5 text-xs text-green-600">
+                                    Tài liệu sẽ tự động hết hạn vào thời điểm đã chọn
+                                </p>
+                            )}
                         </div>
-                        <span className="text-sm text-slate-700">Bật thứ tự ký</span>
-                    </label>
+
+                        {/* Toggle thứ tự ký */}
+                        <div className="flex-shrink-0 pt-7">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <div className="relative">
+                                    <input
+                                        type="checkbox"
+                                        checked={enableSigningOrder}
+                                        onChange={(e) => setEnableSigningOrder(e.target.checked)}
+                                        className="sr-only"
+                                    />
+                                    <div className={`w-10 h-6 rounded-full transition-colors ${enableSigningOrder ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                                        <div className={`w-4 h-4 rounded-full bg-white shadow absolute top-1 transition-transform ${enableSigningOrder ? 'translate-x-5' : 'translate-x-1'}`} />
+                                    </div>
+                                </div>
+                                <span className="text-sm text-slate-700">Bật thứ tự ký</span>
+                            </label>
+                        </div>
+                    </div>
 
                     <div className="space-y-4">
                         <div className="grid grid-cols-12 gap-4 text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">

@@ -24,6 +24,12 @@ export const deleteOrganization = async (orgId) => {
     return response.data;
 };
 
+// Rời tổ chức
+export const leaveOrganization = async (orgId) => {
+    const response = await apiClient.post(`/organizations/${orgId}/leave`);
+    return response.data;
+};
+
 // Mời thành viên vào tổ chức
 export const inviteMember = async (orgId, data) => {
     const response = await apiClient.post(`/organizations/${orgId}/invitations`, data);
@@ -118,8 +124,17 @@ export const finishOrgAuthentication = async (orgUrl, credentialJson) => {
     return response.data;
 };
 
+// Lấy dữ liệu dashboard của tổ chức
+export const getOrganizationDashboard = async (orgId) => {
+    const response = await apiClient.get(`/organizations/${orgId}/dashboard`);
+    return response.data;
+};
+
 export default {
     getOrganizationByUrl,
+    createOrganization,
+    deleteOrganization,
+    leaveOrganization,
     verifyInvitation,
     acceptInvitation,
     rejectInvitation,
@@ -131,5 +146,6 @@ export default {
     saveOrgSignature,
     getOrgPasskeyStatus,
     startOrgPasskeyRegistration,
-    finishOrgPasskeyRegistration
+    finishOrgPasskeyRegistration,
+    getOrganizationDashboard
 };
