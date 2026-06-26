@@ -12,7 +12,7 @@ spring:
     url: "jdbc:mysql://localhost:3306/esign_dtb"
     driverClassName: "com.mysql.cj.jdbc.Driver"
     username: root
-    password:
+    password: 123456
   jpa:
     hibernate:
       ddl-auto: update
@@ -21,7 +21,7 @@ spring:
     host: smtp.gmail.com
     port: 587
     username: "hah3182004@gmail.com"
-    password: "jgut dsas xsls zlgf"
+    password: ""
     properties:
       mail:
         smtp:
@@ -34,18 +34,18 @@ spring:
       port: 6379
 
 jwt:
-  signerKey: ""
+  signerKey: "Fq7Yy2toMGICCK6a0GIIuZUMlcKxe5SAjC42eqBi0taBvpcKAXcysVHkkx7IDkJ+"
 
 minio:
   url: http://localhost:9000
-  access-key:
-  secret-key:
+  access-key: minioadmin
+  secret-key: minioadmin
 
 platform:
   signature:
     keystore:
       path: E:/sercurity/certificate.p12
-      password:
+      password: 123456
       alias: Esign_App # (Thường là tên mặc định khi tạo chứng chỉ)
 
 app:
