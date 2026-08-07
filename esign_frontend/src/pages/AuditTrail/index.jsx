@@ -301,7 +301,7 @@ const AuditTrailPage = () => {
                                     <FileSignature className="w-4 h-4 text-white" />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-xs font-bold text-slate-800 leading-tight">DigiSign</span>
+                                    <span className="text-xs font-bold text-slate-800 leading-tight">E-Sign</span>
                                     <span className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Enterprise</span>
                                 </div>
                             </div>

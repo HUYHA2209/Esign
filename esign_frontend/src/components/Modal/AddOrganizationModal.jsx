@@ -72,7 +72,7 @@ const AddOrganizationModal = ({ isOpen, onClose, onSubmit, isLoading = false }) 
                                         value={orgName}
                                         onChange={(e) => setOrgName(e.target.value)}
                                         className="w-full pl-12 pr-4 py-3.5 bg-secondary-50 border border-secondary-200 rounded-2xl focus:bg-white focus:ring-4 focus:ring-primary-500/10 focus:border-primary-500 outline-none transition-all duration-300 font-medium text-sm text-secondary-800 placeholder-secondary-400"
-                                        placeholder="Ví dụ: Công ty TNHH DigiSign"
+                                        placeholder="Ví dụ: Công ty TNHH E-Sign"
                                     />
                                 </div>
                             </div>

@@ -56,7 +56,7 @@ public class RateLimitService {
     }
 
     /**
-     * Register: tối đa 3 lần/giờ/IP
+     * Register: tối đa 10 lần/giờ/IP
      */
     public boolean isRegisterAllowed(String ip) {
         return isAllowed("register", ip, 10, 3600);

@@ -2,16 +2,29 @@ import axios from "axios";
 
 const API_URL = "http://localhost:8000/esign";
 
-// Centralized API instance with credentials support for cookies
 const apiClient = axios.create({
     baseURL: API_URL,
-    withCredentials: true, // Essential for sending/receiving cookies (refreshToken)
+    withCredentials: true,
 });
 
-// Request Interceptor: Attach Access Token
+// Các biến để xử lý các request làm mới đồng thời
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+    failedQueue.forEach(prom => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    failedQueue = [];
+};
+
+// Request Interceptor
 apiClient.interceptors.request.use(
     (config) => {
-        // Skip attaching token for auth endpoints to avoid issues
         if (
             config.url.includes("/auth/login") ||
             config.url.includes("/auth/register") ||
@@ -26,20 +39,15 @@ apiClient.interceptors.request.use(
         }
         return config;
     },
-    (error) => {
-        return Promise.reject(error);
-    }
+    (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Handle 401 & Auto-Refresh
+// Response Interceptor
 apiClient.interceptors.response.use(
-    (response) => {
-        return response;
-    },
+    (response) => response,
     async (error) => {
         const originalRequest = error.config;
 
-        // Skip refresh logic for login/register/refresh or if already retried
         if (
             !originalRequest ||
             originalRequest.url.includes("/auth/login") ||
@@ -51,30 +59,47 @@ apiClient.interceptors.response.use(
         }
 
         if (error.response && error.response.status === 401) {
+            // Nếu đang trong quá trình refresh, đưa request này vào hàng đợi (queue)
+            if (isRefreshing) {
+                return new Promise(function(resolve, reject) {
+                    failedQueue.push({ resolve, reject });
+                })
+                .then(token => {
+                    originalRequest.headers['Authorization'] = `Bearer ${token}`;
+                    return apiClient(originalRequest);
+                })
+                .catch(err => Promise.reject(err));
+            }
+
             originalRequest._retry = true;
+            isRefreshing = true;
 
             try {
-                // Attempt to refresh token
-                // Backend expects POST to /auth/refresh, cookie is sent automatically via withCredentials
                 const response = await apiClient.post("/auth/refresh");
-
-                // Assuming backend returns: { result: { token: 'new_token', ... } }
                 const newAccessToken = response.data.result.token;
-
+                
                 if (newAccessToken) {
                     sessionStorage.setItem("token", newAccessToken);
-
-                    // Update header and retry original request
+                    
+                    // Cập nhật token cho request ban đầu
                     originalRequest.headers["Authorization"] = `Bearer ${newAccessToken}`;
+                    
+                    // Giải quyết (resolve) tất cả các request đang chờ trong hàng đợi với token mới
+                    processQueue(null, newAccessToken);
+                    
                     return apiClient(originalRequest);
                 }
             } catch (refreshError) {
-                // Refresh failed (token expired or invalid)
-                console.error("Token refresh failed:", refreshError);
+                // Từ chối (reject) tất cả các request trong hàng đợi nếu việc làm mới thất bại
+                processQueue(refreshError, null);
+                
                 sessionStorage.removeItem("token");
-                // Optional: Redirect to login or let the app handle the auth state change
                 // window.location.href = "/login"; 
+                
                 return Promise.reject(refreshError);
+            } finally {
+                // Luôn đặt lại cờ trạng thái dù thành công hay thất bại
+                isRefreshing = false;
             }
         }
 

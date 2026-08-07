@@ -474,10 +474,11 @@ const DocumentEditor = () => {
             toast.error('Vui lòng thêm ít nhất 1 người nhận hợp lệ (email).');
             return;
         }
-        const emails = validRecipients.map(r => r.email.toLowerCase());
-        const dup = emails.find((e, i) => emails.indexOf(e) !== i);
-        if (dup) {
-            toast.error(`Email bị trùng: ${dup}`);
+        const identities = validRecipients.map(r => `${r.email.toLowerCase()}-${r.accountId || 'personal'}`);
+        const dupIndex = identities.findIndex((id, i) => identities.indexOf(id) !== i);
+        if (dupIndex !== -1) {
+            const dupEmail = validRecipients[dupIndex].email;
+            toast.error(`Bạn đã thêm tư cách ký này cho email ${dupEmail} rồi. Không thể thêm trùng lặp!`);
             return;
         }
         for (const r of validRecipients) {

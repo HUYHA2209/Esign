@@ -82,15 +82,18 @@ public class WebAuthnService {
         challengeStore.put(userId, challenge);
 
         // RP Entity
+        // khai báo danh tính ứng dung
         PublicKeyCredentialRpEntity rp = new PublicKeyCredentialRpEntity(rpId, rpName);
 
         // User Entity
+        // khai báo danh tính người dùng
         String webAuthnUserId = userId + "@personal";
         String displayName = user.getFullName() + " (Cá nhân)";
         PublicKeyCredentialUserEntity userEntity =
                 new PublicKeyCredentialUserEntity(webAuthnUserId.getBytes(), displayName, displayName);
 
         // PubKey Cred Params
+        // khai báo thuật toán
         List<PublicKeyCredentialParameters> pubKeyCredParams = List.of(
                 new PublicKeyCredentialParameters(PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.ES256),
                 new PublicKeyCredentialParameters(PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.RS256));

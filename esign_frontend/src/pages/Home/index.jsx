@@ -20,7 +20,7 @@ export default function Home() {
               <div className="p-1.5 premium-gradient rounded-lg shadow-lg shadow-primary-500/20">
                 <FileCheck className="w-7 h-7 text-white" />
               </div>
-              <span className="text-xl font-bold font-display tracking-tight">DigiSign</span>
+              <span className="text-xl font-bold font-display tracking-tight">E-Sign</span>
             </motion.div>
 
             <div className="hidden lg:flex items-center gap-10">
@@ -142,7 +142,7 @@ export default function Home() {
           <div className="text-center max-w-3xl mx-auto mb-20">
             <h2 className="text-base font-bold text-primary-600 uppercase tracking-[0.3em] mb-4">Giá trị cốt lõi</h2>
             <h3 className="text-4xl md:text-5xl font-bold text-secondary-900 font-display mb-6">Giải pháp toàn diện cho mọi doanh nghiệp</h3>
-            <p className="text-secondary-600 font-medium leading-relaxed">Được xây dựng trên nền tảng công nghệ tiên tiến nhất, DigiSign mang lại trải nghiệm ký số an toàn và mượt mà.</p>
+            <p className="text-secondary-600 font-medium leading-relaxed">Được xây dựng trên nền tảng công nghệ tiên tiến nhất, E-Sign mang lại trải nghiệm ký số an toàn và mượt mà.</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -226,7 +226,7 @@ export default function Home() {
             <div className="col-span-1 md:col-span-1">
               <div className="flex items-center gap-2 mb-8">
                 <FileCheck className="w-8 h-8 text-primary-500" />
-                <span className="text-2xl font-bold font-display tracking-tight">DigiSign</span>
+                <span className="text-2xl font-bold font-display tracking-tight">E-Sign</span>
               </div>
               <p className="text-secondary-400 leading-relaxed mb-8">
                 Nền tảng quản lý và ký kết tài liệu số hàng đầu, giúp doanh nghiệp bứt phá trong kỷ nguyên chuyển đổi số.
@@ -261,7 +261,7 @@ export default function Home() {
           </div>
 
           <div className="pt-8 border-t border-secondary-900 flex flex-col md:flex-row justify-between items-center gap-4 text-secondary-500 text-sm font-medium">
-            <p>© 2024 DigiSign Platform. All rights reserved.</p>
+            <p>© 2024 E-Sign Platform. All rights reserved.</p>
             <div className="flex gap-8">
               <a href="#" className="hover:text-white transition-colors">Sitemap</a>
               <a href="#" className="hover:text-white transition-colors">Cookies</a>

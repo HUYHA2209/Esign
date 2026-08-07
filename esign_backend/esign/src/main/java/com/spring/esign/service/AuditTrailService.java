@@ -116,12 +116,15 @@ public class AuditTrailService {
 
     /**
      * Listener xử lý AuditLogEvent SAU KHI transaction cha commit thành công.
+     * ví dụ dễ hiểu thì cái ví dụ luông compeleted doc phải chạy xong thì mới ghi log còn bất kì
+     * việc gì làm gián đoạn luồng này thì cx sẽ không thể ghi được log nữa
      * Chạy trong transaction riêng (REQUIRES_NEW) → không deadlock với transaction
      * cha
      * vì transaction cha đã kết thúc và giải phóng tất cả lock.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    // chạy tự động khi phát ra AuditLogEvent + sự kiện cha thành công
     public void handleAuditEvent(AuditLogEvent event) {
         try {
             Document doc = documentRepository.findById(event.getDocumentId()).orElse(null);

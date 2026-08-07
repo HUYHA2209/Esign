@@ -236,7 +236,7 @@ const OrganizationSettings = () => {
                         <div className="space-y-2">
                             <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-[0.2em] px-1">URL định danh *</label>
                             <div className="flex bg-secondary-50 border border-secondary-100 rounded-2xl overflow-hidden focus-within:ring-4 focus-within:ring-primary-500/10 focus-within:border-primary-500 transition-all">
-                                <span className="px-5 py-4 bg-secondary-100/50 flex items-center text-secondary-500 font-bold text-xs border-r border-secondary-100">digisign.app/o/</span>
+                                <span className="px-5 py-4 bg-secondary-100/50 flex items-center text-secondary-500 font-bold text-xs border-r border-secondary-100">e-sign.app/o/</span>
                                 <input 
                                     value={orgSlug}
                                     disabled={currentRole !== 'ADMIN'}

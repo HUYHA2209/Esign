@@ -103,7 +103,7 @@ export default function InvitationLink() {
               <Building2 className="w-12 h-12 text-white" />
             </div>
             <h2 className="text-3xl font-bold font-display mb-2">Lời Mời Tham Gia Tổ Chức</h2>
-            <p className="text-primary-100 text-lg">Bạn đã nhận được một lời mời mới trên hệ thống DigiSign</p>
+            <p className="text-primary-100 text-lg">Bạn đã nhận được một lời mời mới trên hệ thống E-Sign</p>
           </div>
         </div>
 

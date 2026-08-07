@@ -360,6 +360,25 @@ public class OrganizationService {
         }
         if (request.getCanSign() != null) {
             targetMember.setCanSign(request.getCanSign());
+            if (!request.getCanSign()) {
+                // Vô hiệu hóa Passkey nếu bị thu hồi quyền ký
+                organizationKeysRepository
+                        .findByAccount_AccountIdAndUser_Id(
+                                accountId, targetMember.getUser().getId())
+                        .ifPresent(key -> {
+                            key.setIsActive(false);
+                            organizationKeysRepository.save(key);
+                        });
+            } else {
+                // Phục hồi lại Passkey nếu được cấp lại quyền ký
+                organizationKeysRepository
+                        .findByAccount_AccountIdAndUser_Id(
+                                accountId, targetMember.getUser().getId())
+                        .ifPresent(key -> {
+                            key.setIsActive(true);
+                            organizationKeysRepository.save(key);
+                        });
+            }
         }
         if (request.getCanUpload() != null) {
             targetMember.setCanUpload(request.getCanUpload());

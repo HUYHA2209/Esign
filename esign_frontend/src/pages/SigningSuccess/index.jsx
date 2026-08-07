@@ -54,7 +54,7 @@ const SigningSuccess = () => {
                         <FileSignature className="w-5 h-5 text-white" />
                     </div>
                     <span className="text-xl font-bold text-secondary-900 tracking-tight font-display">
-                        DigiSign
+                        E-Sign
                     </span>
                 </div>
                 

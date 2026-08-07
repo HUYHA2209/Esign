@@ -529,23 +529,23 @@ public class DocumentService {
                 resp.setSignerStatus(signerStatusStr);
                 groupMap.put(key, resp);
                 if (groupId != null) groupIds.add(groupId);
-            } else {
-                // Aggregate signerStatus: PENDING > DECLINED > SIGNED
-                DocumentResponse resp = groupMap.get(key);
-                if (ds.getStatus() != null) {
-                    boolean isCurrentPending =
-                            (ds.getStatus() == SignerStatus.WAITING || ds.getStatus() == SignerStatus.VIEWED);
-                    boolean isCurrentDeclined = (ds.getStatus() == SignerStatus.DECLINED);
+            } /*else {
+              	// Aggregate signerStatus: PENDING > DECLINED > SIGNED
+              	DocumentResponse resp = groupMap.get(key);
+              	if (ds.getStatus() != null) {
+              		boolean isCurrentPending =
+              				(ds.getStatus() == SignerStatus.WAITING || ds.getStatus() == SignerStatus.VIEWED);
+              		boolean isCurrentDeclined = (ds.getStatus() == SignerStatus.DECLINED);
 
-                    if ("PENDING".equals(resp.getSignerStatus())) {
-                        // Already PENDING, keep it
-                    } else if (isCurrentPending) {
-                        resp.setSignerStatus("PENDING");
-                    } else if (isCurrentDeclined) {
-                        resp.setSignerStatus("DECLINED");
-                    }
-                }
-            }
+              		if ("PENDING".equals(resp.getSignerStatus())) {
+              			// Already PENDING, keep it
+              		} else if (isCurrentPending) {
+              			resp.setSignerStatus("PENDING");
+              		} else if (isCurrentDeclined) {
+              			resp.setSignerStatus("DECLINED");
+              		}
+              	}
+              }*/
         }
 
         // 3. Batch count fileCount per group in one query
@@ -906,9 +906,12 @@ public class DocumentService {
         // nên không cần so sánh docAccountId với accountId hiện tại.
         Long accountId = extractAccountId(authentication);
         String accountType = extractAccountType(authentication);
-        DocumentSigner documentSigner = documentSignerRepository
-                .findByDocumentIdAndSignerEmailAndAccountIdFallback(documentId, user.getEmail(), accountId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NO_PERMISSION));
+        DocumentSigner documentSigner =
+                documentSignerRepository
+                        .findByDocumentIdAndSignerEmailAndAccountIdFallback(documentId, user.getEmail(), accountId)
+                        .stream()
+                        .findFirst()
+                        .orElseThrow(() -> new AppException(ErrorCode.USER_NO_PERMISSION));
 
         if (logAudit) {
             String downloadHash = (document.getFinalFileHash() != null)
@@ -1039,6 +1042,38 @@ public class DocumentService {
 
         if (rows.isEmpty()) return null;
 
+        // --- Ghi nhận sự kiện VIEWED (Chỉ ghi lần đầu tiên) ---
+        List<DocumentSigner> signersToView = documentSignerRepository.findByGroupIdAndEmailAndAccountIdFallback(
+                groupId, user.getEmail(), signerAccountId);
+
+        List<DocumentSigner> signersToUpdate = new ArrayList<>();
+        String ip = getClientIp();
+        String ua = getUserAgent();
+
+        for (DocumentSigner ds : signersToView) {
+            if (ds.getStatus() == com.spring.esign.enums.SignerStatus.WAITING) {
+                ds.setStatus(com.spring.esign.enums.SignerStatus.VIEWED);
+                signersToUpdate.add(ds);
+
+                auditTrailService.logEvent(
+                        ds.getDocument(),
+                        com.spring.esign.enums.AuditEvent.VIEWED,
+                        user,
+                        ds,
+                        ds.getDocument().getOriginalFileHash(),
+                        ds.getDocument().getOriginalFileHash(),
+                        null,
+                        null,
+                        null,
+                        ip,
+                        ua);
+            }
+        }
+        if (!signersToUpdate.isEmpty()) {
+            documentSignerRepository.saveAll(signersToUpdate);
+        }
+        // --------------------------------------------------------
+
         Object[] fisrtRow = rows.getFirst();
 
         // Group
@@ -1140,25 +1175,21 @@ public class DocumentService {
         // ── 3. Delete signers (+ their fields cascade) ──
         List<Integer> deletedDocSignerIds = request.getDeletedDocSignerIds();
         if (deletedDocSignerIds != null && !deletedDocSignerIds.isEmpty()) {
-            List<DocumentSigner> signersToDelete = documentSignerRepository.findAllById(deletedDocSignerIds);
-            for (DocumentSigner ds : signersToDelete) {
-                List<SignatureField> signerFields = signatureFieldRepository.findByDocument_DocumentId(
-                        ds.getDocument().getDocumentId());
-                List<Integer> fieldIdsToRemove = signerFields.stream()
-                        .filter(sf -> sf.getDocSigner() != null
-                                && sf.getDocSigner().getDocSignerId().equals(ds.getDocSignerId()))
-                        .map(SignatureField::getFieldId)
-                        .toList();
-                if (!fieldIdsToRemove.isEmpty()) {
-                    signatureFieldRepository.deleteByFieldIdIn(fieldIdsToRemove);
-                }
+            long validCount = documentSignerRepository.countByIdsAndGroupId(deletedDocSignerIds, groupId);
+            if (validCount != deletedDocSignerIds.size()) {
+                throw new AppException(ErrorCode.USER_NO_PERMISSION);
             }
+            signatureFieldRepository.deleteByDocSignerIdIn(deletedDocSignerIds);
             documentSignerRepository.deleteAllByIdInBatch(deletedDocSignerIds);
         }
 
         // ── 4. Delete specific fields by ID ──
         List<Integer> deletedFieldIds = request.getDeletedFieldIds();
         if (deletedFieldIds != null && !deletedFieldIds.isEmpty()) {
+            long validCount = signatureFieldRepository.countByIdsAndGroupId(deletedFieldIds, groupId);
+            if (validCount != deletedFieldIds.size()) {
+                throw new AppException(ErrorCode.USER_NO_PERMISSION);
+            }
             signatureFieldRepository.deleteByFieldIdIn(deletedFieldIds);
         }
 
@@ -1199,13 +1230,13 @@ public class DocumentService {
                     User signerUser = emailToUser.get(sr.getEmail().trim().toLowerCase());
                     if (signerUser == null) throw new AppException(ErrorCode.USER_NOT_EXISTED);
 
-                    Optional<DocumentSigner> existingOpt =
-                            documentSignerRepository.findByDocumentIdAndSignerEmailAndAccountIdFallback(
-                                    docId, sr.getEmail(), sr.getAccountId());
+                    DocumentSigner ds = documentSignerRepository
+                            .findByDocumentIdAndSignerEmailAndAccountIdFallback(docId, sr.getEmail(), sr.getAccountId())
+                            .stream()
+                            .findFirst()
+                            .orElse(null);
 
-                    DocumentSigner ds;
-                    if (existingOpt.isPresent()) {
-                        ds = existingOpt.get();
+                    if (ds != null) {
                         ds.setSignerName(sr.getName());
                         ds.setRole(sr.getRole() == null ? "signer" : sr.getRole());
                         ds.setSigningOrder(sr.getSigningOrder() == null ? 1 : sr.getSigningOrder());
@@ -1254,6 +1285,8 @@ public class DocumentService {
                     ds = documentSignerRepository
                             .findByDocumentIdAndSignerEmailAndAccountIdFallback(
                                     fr.getDocumentId(), fr.getRecipientEmail(), fr.getAccountId())
+                            .stream()
+                            .findFirst()
                             .orElse(null);
                 }
                 if (ds == null) continue;

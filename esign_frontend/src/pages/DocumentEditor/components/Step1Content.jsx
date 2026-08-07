@@ -32,14 +32,63 @@ const Step1Content = ({
     goToStep,
     isStepAnimating,
 }) => {
-    // Tính giá trị min cho input datetime-local (thời điểm hiện tại + 1 phút)
+    // Tính giá trị min cho input datetime-local (làm tròn lên mốc 30 phút tiếp theo)
     const minDateTime = useMemo(() => {
         const now = new Date();
-        now.setMinutes(now.getMinutes() + 1);
-        // Format: YYYY-MM-DDTHH:mm:ss
+        const remainder = now.getMinutes() % 30;
+        now.setMinutes(now.getMinutes() + (30 - remainder));
+        // Format: YYYY-MM-DDTHH:mm
         const pad = (n) => String(n).padStart(2, '0');
-        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
     }, []);
+
+    const minDateStr = minDateTime.split('T')[0];
+    const minTimeStr = minDateTime.split('T')[1].substring(0, 5);
+
+    const selectedDateStr = expiresAt ? expiresAt.split('T')[0] : '';
+    const selectedTimeStr = expiresAt ? expiresAt.split('T')[1].substring(0, 5) : '';
+
+    const timeOptions = useMemo(() => {
+        const options = [];
+        for (let h = 0; h < 24; h++) {
+            for (let m = 0; m < 60; m += 30) {
+                const hour = String(h).padStart(2, '0');
+                const min = String(m).padStart(2, '0');
+                options.push(`${hour}:${min}`);
+            }
+        }
+        return options;
+    }, []);
+
+    const availableTimeOptions = useMemo(() => {
+        if (!selectedDateStr) return timeOptions;
+        if (selectedDateStr === minDateStr) {
+            return timeOptions.filter(time => time >= minTimeStr);
+        }
+        return timeOptions;
+    }, [selectedDateStr, minDateStr, minTimeStr, timeOptions]);
+
+    const handleDateChange = (e) => {
+        const newDate = e.target.value;
+        if (!newDate) {
+            setExpiresAt('');
+            return;
+        }
+        let newTime = selectedTimeStr;
+        if (!newTime || (newDate === minDateStr && newTime < minTimeStr)) {
+            const validTimes = newDate === minDateStr
+                ? timeOptions.filter(t => t >= minTimeStr)
+                : timeOptions;
+            newTime = validTimes[0] || '00:00';
+        }
+        setExpiresAt(`${newDate}T${newTime}`);
+    };
+
+    const handleTimeChange = (e) => {
+        const newTime = e.target.value;
+        const newDate = selectedDateStr || minDateStr;
+        setExpiresAt(`${newDate}T${newTime}`);
+    };
 
     // Kiểm tra expiresAt hợp lệ (phải trong tương lai)
     const isExpired = expiresAt && new Date(expiresAt) <= new Date();
@@ -153,20 +202,36 @@ const Step1Content = ({
                                 Thời hạn ký
                                 <span className="text-red-500">*</span>
                             </label>
-                            <input
-                                type="datetime-local"
-                                step="1"
-                                min={minDateTime}
-                                value={expiresAt || ''}
-                                onChange={(e) => setExpiresAt(e.target.value)}
-                                className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors ${
-                                    !expiresAt
+                            <div className="flex gap-3">
+                                <input
+                                    type="date"
+                                    min={minDateStr}
+                                    value={selectedDateStr}
+                                    onChange={handleDateChange}
+                                    className={`w-2/3 px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors ${!expiresAt
                                         ? 'border-amber-300 bg-amber-50/50'
                                         : isExpired
                                             ? 'border-red-400 bg-red-50'
                                             : 'border-green-400 bg-green-50/50'
-                                }`}
-                            />
+                                        }`}
+                                />
+                                <select
+                                    value={selectedTimeStr}
+                                    onChange={handleTimeChange}
+                                    disabled={!selectedDateStr}
+                                    className={`w-1/3 px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors ${!expiresAt
+                                        ? 'border-amber-300 bg-amber-50/50'
+                                        : isExpired
+                                            ? 'border-red-400 bg-red-50'
+                                            : 'border-green-400 bg-green-50/50'
+                                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                >
+                                    <option value="" disabled>Giờ</option>
+                                    {availableTimeOptions.map(time => (
+                                        <option key={time} value={time}>{time}</option>
+                                    ))}
+                                </select>
+                            </div>
                             {!expiresAt && (
                                 <p className="mt-1.5 text-xs text-amber-600">
                                     Bắt buộc — Vui lòng chọn thời hạn ký cho tài liệu
@@ -243,25 +308,23 @@ const Step1Content = ({
                                                             items.push(
                                                                 <button
                                                                     key={`${user.id || user.email}-${ws.accountId}`}
-                                                                    onClick={() => handleSelectUser(recipient.id, { 
-                                                                        ...user, 
+                                                                    onClick={() => handleSelectUser(recipient.id, {
+                                                                        ...user,
                                                                         selectedContextName: isPersonal
                                                                             ? `${user.name || user.fullName || 'Chưa cập nhật tên'} (Personal)`
                                                                             : `${user.name || user.fullName || 'Chưa cập nhật tên'} (${ws.accountName})`,
                                                                         accountId: ws.accountId
                                                                     })}
-                                                                    className={`w-full text-left px-4 py-3 transition-colors duration-150 ${
-                                                                        isPersonal ? 'hover:bg-slate-50' : 'hover:bg-indigo-50/30'
-                                                                    }`}
+                                                                    className={`w-full text-left px-4 py-3 transition-colors duration-150 ${isPersonal ? 'hover:bg-slate-50' : 'hover:bg-indigo-50/30'
+                                                                        }`}
                                                                 >
                                                                     <div className="flex flex-col gap-1">
                                                                         <div className="flex items-center justify-between gap-2">
                                                                             <span className="text-sm font-semibold text-slate-800">{user.name || user.fullName || 'Chưa cập nhật tên'}</span>
-                                                                            <span className={`px-2 py-0.5 text-[10px] font-medium rounded-md flex-shrink-0 border ${
-                                                                                isPersonal 
-                                                                                    ? 'bg-slate-100 text-slate-600 border-slate-200' 
-                                                                                    : 'bg-indigo-50 text-indigo-600 border-indigo-100'
-                                                                            }`}>
+                                                                            <span className={`px-2 py-0.5 text-[10px] font-medium rounded-md flex-shrink-0 border ${isPersonal
+                                                                                ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                                                                : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                                                                                }`}>
                                                                                 {isPersonal ? 'Cá nhân' : 'Tổ chức'}
                                                                             </span>
                                                                         </div>

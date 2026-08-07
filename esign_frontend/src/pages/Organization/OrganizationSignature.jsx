@@ -31,7 +31,7 @@ const OrganizationSignature = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [creationTab, setCreationTab] = useState('draw');
     const [selectedColor, setSelectedColor] = useState('#e63946'); // Default red color for business stamps/seals
-    const [typedName, setTypedName] = useState('CÔNG TY TNHH DIGISIGN');
+    const [typedName, setTypedName] = useState('CÔNG TY TNHH E-Sign');
     const [selectedFont, setSelectedFont] = useState(0);
     const [imageHash, setImageHash] = useState('');
 
@@ -507,7 +507,7 @@ const OrganizationSignature = () => {
                                                 value={typedName}
                                                 onChange={(e) => setTypedName(e.target.value)}
                                                 className="w-full text-center text-xl font-bold py-3 border-b-2 border-secondary-200 focus:border-primary-500 outline-none bg-transparent text-secondary-800"
-                                                placeholder="CÔNG TY TNHH DIGISIGN"
+                                                placeholder="CÔNG TY TNHH E-Sign"
                                             />
                                         </div>
                                         <div className="space-y-3">

@@ -23,4 +23,12 @@ public interface SignatureFieldRepository extends JpaRepository<SignatureField, 
     @Modifying
     @Query("DELETE FROM SignatureField sf WHERE sf.fieldId IN :fieldIds")
     void deleteByFieldIdIn(@Param("fieldIds") List<Integer> fieldIds);
+
+    @Modifying
+    @Query("DELETE FROM SignatureField sf WHERE sf.docSigner.docSignerId IN :signerIds")
+    void deleteByDocSignerIdIn(@Param("signerIds") List<Integer> signerIds);
+
+    @Query(
+            "SELECT COUNT(sf) FROM SignatureField sf WHERE sf.fieldId IN :ids AND sf.document.documentGroup.groupId = :groupId")
+    long countByIdsAndGroupId(@Param("ids") List<Integer> ids, @Param("groupId") Integer groupId);
 }

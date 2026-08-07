@@ -128,7 +128,8 @@ export function useAutoSaveDraft({
 
     // ─── Core: Build & save (POST for create, PUT for update) ───
     const buildAndSave = useCallback(async (extraFiles = [], overrideName = null) => {
-        const { id, documentName, recipients, currentStep, fields, uploadedFiles, navigate, enableSigningOrder, orgUrl } = stateRef.current;
+        const { id, documentName, recipients, currentStep,
+            fields, uploadedFiles, navigate, enableSigningOrder, orgUrl } = stateRef.current;
         const finalDocName = overrideName !== null ? overrideName : documentName;
 
         if (uploadedFiles.length === 0 && extraFiles.length === 0) return null;

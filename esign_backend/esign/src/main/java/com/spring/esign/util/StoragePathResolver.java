@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
  * document-versions/  {accountId}/{docId}/v{prevOrder}_{timestamp}.pdf
  * document-temp/      {sessionId}/{docId}.pdf           (session-scoped)
  * signatures/         {userId}/{timestamp}.{ext}         (user-scoped)
+ * acoountId ở đây là account phát hành ra cái bản doc
  * </pre>
  */
 @Component

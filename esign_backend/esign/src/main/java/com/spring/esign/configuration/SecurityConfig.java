@@ -54,6 +54,11 @@ public class SecurityConfig {
         httpSecurity.csrf(AbstractHttpConfigurer::disable);
 
         return httpSecurity.build();
+
+        // CustomJWTDecoder của bạn để giải mã token.
+        // Nếu token hợp lệ, Spring Security sẽ tự động đóng gói
+        // thông tin người dùng thành một đối tượng Authentication
+        // và cất vào "két sắt" mang tên SecurityContextHolder.
     }
 
     @Bean

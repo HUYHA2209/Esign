@@ -185,61 +185,42 @@ public class PdfDocumentService {
                     FieldType type = field.getFieldType();
 
                     if (type == FieldType.SIGNATURE || type == FieldType.INITIAL) {
-                        // ─── Vẽ ảnh chữ ký / ký nháy ───
-                        if (fieldValue.startsWith("data:image")) {
-                            String base64Data = fieldValue.contains(",")
-                                    ? fieldValue.substring(fieldValue.indexOf(",") + 1)
-                                    : fieldValue;
-                            byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Data);
-                            PDImageXObject customImage = PDImageXObject.createFromByteArray(
-                                    document, imageBytes, "field-signature-" + field.getFieldId());
-                            cs.drawImage(customImage, x, pdfY, width, height);
-                            log.info(
-                                    "[burnVisuals] Field {} ({}) — vẽ ảnh base64 tại x={}, y={}, w={}, h={}",
-                                    field.getFieldId(),
-                                    type,
-                                    x,
-                                    pdfY,
-                                    width,
-                                    height);
+                        // ─── Dùng ảnh signature đã lưu trong MinIO ───
+                        DocumentSigner ds = field.getDocSigner();
+                        String imageUrl = null;
+                        if (ds != null
+                                && ds.getAccount() != null
+                                && ds.getAccount().getAccountType() == AccountType.ORGANIZATION) {
+                            OrganizationSignature orgSig = orgSignatureRepository
+                                    .findByAccount_AccountId(ds.getAccount().getAccountId())
+                                    .orElseThrow(() -> new AppException(ErrorCode.SIGNATURE_NOT_FOUND));
+                            imageUrl = orgSig.getImageUrl();
                         } else {
-                            // Dùng ảnh signature đã lưu trong MinIO
-                            DocumentSigner ds = field.getDocSigner();
-                            String imageUrl = null;
-                            if (ds != null
-                                    && ds.getAccount() != null
-                                    && ds.getAccount().getAccountType() == AccountType.ORGANIZATION) {
-                                OrganizationSignature orgSig = orgSignatureRepository
-                                        .findByAccount_AccountId(ds.getAccount().getAccountId())
-                                        .orElseThrow(() -> new AppException(ErrorCode.SIGNATURE_NOT_FOUND));
-                                imageUrl = orgSig.getImageUrl();
-                            } else {
-                                Signatures personalSig = signatureRepository
-                                        .findByUserId(userId)
-                                        .orElseThrow(() -> new AppException(ErrorCode.SIGNATURE_NOT_FOUND));
-                                imageUrl = personalSig.getImageUrl();
-                            }
-
-                            if (imageUrl == null || imageUrl.isEmpty()) {
-                                throw new AppException(ErrorCode.SIGNATURE_NOT_FOUND);
-                            }
-
-                            byte[] signatureBytes = minioService
-                                    .downloadFile("signatures", imageUrl)
-                                    .readAllBytes();
-                            PDImageXObject signatureImage = PDImageXObject.createFromByteArray(
-                                    document, signatureBytes, "signature-" + field.getFieldId());
-
-                            cs.drawImage(signatureImage, x, pdfY, width, height);
-                            log.info(
-                                    "[burnVisuals] Field {} ({}) — vẽ ảnh MinIO tại x={}, y={}, w={}, h={}",
-                                    field.getFieldId(),
-                                    type,
-                                    x,
-                                    pdfY,
-                                    width,
-                                    height);
+                            Signatures personalSig = signatureRepository
+                                    .findByUserId(userId)
+                                    .orElseThrow(() -> new AppException(ErrorCode.SIGNATURE_NOT_FOUND));
+                            imageUrl = personalSig.getImageUrl();
                         }
+
+                        if (imageUrl == null || imageUrl.isEmpty()) {
+                            throw new AppException(ErrorCode.SIGNATURE_NOT_FOUND);
+                        }
+
+                        byte[] signatureBytes = minioService
+                                .downloadFile("signatures", imageUrl)
+                                .readAllBytes();
+                        PDImageXObject signatureImage = PDImageXObject.createFromByteArray(
+                                document, signatureBytes, "signature-" + field.getFieldId());
+
+                        cs.drawImage(signatureImage, x, pdfY, width, height);
+                        log.info(
+                                "[burnVisuals] Field {} ({}) — vẽ ảnh MinIO tại x={}, y={}, w={}, h={}",
+                                field.getFieldId(),
+                                type,
+                                x,
+                                pdfY,
+                                width,
+                                height);
 
                     } else if (type == FieldType.CHECKBOX) {
                         // ─── Checkbox — vẽ dấu ✓ ───

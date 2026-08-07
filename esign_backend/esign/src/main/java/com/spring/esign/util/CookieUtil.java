@@ -14,7 +14,7 @@ public class CookieUtil {
     public ResponseCookie createRefreshTokenCookie(String token, Long maxAgeSeconds) {
         return ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, token)
                 .httpOnly(true) // chong xss
-                .secure(false)
+                .secure(false) // co truyen qua https khong
                 .path("/")
                 .maxAge(maxAgeSeconds) // thoi gian song
                 .sameSite("Lax")

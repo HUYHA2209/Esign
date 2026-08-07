@@ -425,7 +425,7 @@ function Register() {
                             <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
                                 <FileCheck className="w-10 h-10" />
                             </div>
-                            <span className="text-2xl font-bold font-display tracking-tight">DigiSign</span>
+                            <span className="text-2xl font-bold font-display tracking-tight">E-Sign</span>
                         </div>
 
                         <h2 className="text-4xl font-bold font-display mb-4 leading-tight">
@@ -455,7 +455,7 @@ function Register() {
                     </div>
 
                     <div className="text-xs text-primary-200 font-medium pt-8">
-                        © 2024 DigiSign Platform. All rights reserved.
+                        © 2024 E-Sign Platform. All rights reserved.
                     </div>
                 </div>
 

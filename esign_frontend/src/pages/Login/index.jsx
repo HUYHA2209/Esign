@@ -87,7 +87,7 @@ export default function Login() {
               <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
                 <FileCheck className="w-10 h-10" />
               </div>
-              <span className="text-2xl font-bold font-display tracking-tight">DigiSign</span>
+              <span className="text-2xl font-bold font-display tracking-tight">E-Sign</span>
             </motion.div>
 
             <motion.h2 
@@ -135,7 +135,7 @@ export default function Login() {
             transition={{ delay: 1 }}
             className="text-xs text-primary-200 font-medium pt-8"
           >
-            © 2024 DigiSign Platform. All rights reserved.
+            © 2024 E-Sign Platform. All rights reserved.
           </motion.div>
         </div>
 

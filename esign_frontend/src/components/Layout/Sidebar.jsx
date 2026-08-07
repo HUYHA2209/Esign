@@ -44,7 +44,7 @@ const Sidebar = () => {
                         className="text-lg font-bold text-secondary-900 tracking-tight cursor-pointer font-display"
                         onClick={() => navigate('/dashboard')}
                     >
-                        DigiSign
+                        E-Sign
                     </span>
                     <span className="text-[10px] text-secondary-400 font-medium tracking-widest uppercase">Enterprise</span>
                 </div>

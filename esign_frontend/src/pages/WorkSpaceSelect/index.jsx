@@ -46,7 +46,7 @@ const WorkspaceSelector = () => {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center space-x-2 mb-6">
             <FileSignature className="w-10 h-10 text-blue-600" />
-            <span className="text-2xl font-bold text-gray-800">DigiSign</span>
+            <span className="text-2xl font-bold text-gray-800">E-Sign</span>
           </div>
 
           <h1 className="text-2xl font-bold text-gray-900 mb-2">

@@ -1,7 +1,6 @@
 package com.spring.esign.repository;
 
 import java.util.List;
-import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -19,8 +18,8 @@ public interface DocumentSignerRepository extends JpaRepository<DocumentSigner, 
 				SELECT ds FROM DocumentSigner ds
 				JOIN FETCH ds.document d
 				JOIN FETCH d.uploadedBy
-				LEFT JOIN FETCH d.documentGroup
-				LEFT JOIN FETCH ds.account a
+				JOIN FETCH d.documentGroup
+				JOIN FETCH ds.account a
 				WHERE ds.signerEmail = :email
 				AND (
 					a.accountId = :accountId
@@ -50,7 +49,7 @@ public interface DocumentSignerRepository extends JpaRepository<DocumentSigner, 
 		AND ds.signerEmail = :signerEmail
 		AND (a.accountId = :accountId OR a IS NULL)
 	""")
-    Optional<DocumentSigner> findByDocumentIdAndSignerEmailAndAccountIdFallback(
+    List<DocumentSigner> findByDocumentIdAndSignerEmailAndAccountIdFallback(
             @Param("documentId") Integer documentId,
             @Param("signerEmail") String signerEmail,
             @Param("accountId") Long accountId);
@@ -97,4 +96,19 @@ public interface DocumentSignerRepository extends JpaRepository<DocumentSigner, 
             @Param("groupIds") java.util.List<Integer> groupIds,
             @Param("oldStatuses") java.util.List<com.spring.esign.enums.SignerStatus> oldStatuses,
             @Param("newStatus") com.spring.esign.enums.SignerStatus newStatus);
+
+    @Query(
+            "SELECT COUNT(ds) FROM DocumentSigner ds WHERE ds.docSignerId IN :ids AND ds.document.documentGroup.groupId = :groupId")
+    long countByIdsAndGroupId(@Param("ids") List<Integer> ids, @Param("groupId") Integer groupId);
+
+    @Query(
+            """
+		SELECT ds FROM DocumentSigner ds
+		LEFT JOIN ds.account a
+		WHERE ds.document.documentGroup.groupId = :groupId
+		AND ds.signerEmail = :email
+		AND (a.accountId = :accountId OR a IS NULL)
+	""")
+    List<DocumentSigner> findByGroupIdAndEmailAndAccountIdFallback(
+            @Param("groupId") Integer groupId, @Param("email") String email, @Param("accountId") Long accountId);
 }

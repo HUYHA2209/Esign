@@ -125,25 +125,6 @@ public class SignningService {
         // account khác.
         // Việc tồn tại DocumentSigner record đã xác nhận quyền ký.
 
-        // Log VIEWED EVENT
-        String ip = getClientIp();
-        String ua = getUserAgent();
-        for (DocumentSigner ds : documentSignerList) {
-            auditTrailService.logEvent(
-                    ds.getDocument(),
-                    com.spring.esign.enums.AuditEvent.VIEWED,
-                    user,
-                    ds,
-                    ds.getDocument().getOriginalFileHash(),
-                    ds.getDocument().getOriginalFileHash(),
-                    null,
-                    null,
-                    null,
-                    ip,
-                    ua);
-        }
-
-        StringJoiner combinedHashes = new StringJoiner("|");
         Map<Integer, String> preSealHashMap = new HashMap<>();
         String tempSessionId = UUID.randomUUID().toString();
         for (DocumentSigner ds : documentSignerList) {
@@ -188,17 +169,37 @@ public class SignningService {
 
                 hashFile = hashDocumentSHA256(preSealBytes);
                 preSealHashMap.put(doc.getDocumentId(), hashFile);
-                combinedHashes.add(hashFile);
+
             } catch (IOException e) {
                 throw new RuntimeException("Lỗi đọc file từ MinIO: " + doc.getDocumentId(), e);
             }
         }
 
-        byte[] nonce = new byte[16];
-        random.nextBytes(nonce);
-        String nonceBase64 = Base64.getEncoder().encodeToString(nonce);
+        // 1. Tạo danh sách SignaturePrepare trước để lấy mã Hash của từng file
+        long timeStamp = System.currentTimeMillis();
+        List<SignaturePrepare> prepareList = new ArrayList<>();
+        StringJoiner combinedMessageHashes = new StringJoiner("|");
 
-        String dataToHash = nonceBase64 + "|" + combinedHashes + "|" + user.getId() + "|" + System.currentTimeMillis();
+        for (DocumentSigner ds : documentSignerList) {
+            String hashFile = preSealHashMap.get(ds.getDocument().getDocumentId());
+            String messageToSign =
+                    buildMessToSign(ds.getDocument().getDocumentId(), hashFile, ds.getSignerEmail(), timeStamp);
+            String messageToSignHash = hashMessageToSign(messageToSign);
+
+            SignaturePrepare prepare = SignaturePrepare.builder()
+                    .document(ds.getDocument())
+                    .docSigner(ds)
+                    .messageToSign(messageToSign)
+                    .messageToSignHash(messageToSignHash)
+                    .baseFinalFileUrl(ds.getDocument().getFinalFileUrl())
+                    .build();
+
+            prepareList.add(prepare);
+            combinedMessageHashes.add(messageToSignHash);
+        }
+
+        // 2. Tạo Challenge từ tempSessionId (UUID) và các messageToSignHash
+        String dataToHash = tempSessionId + "|" + combinedMessageHashes.toString();
         byte[] finalChallengeBytes;
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -208,6 +209,7 @@ public class SignningService {
         }
         String challengeString = Base64.getUrlEncoder().withoutPadding().encodeToString(finalChallengeBytes);
 
+        // 3. Lưu SigningSession với Challenge vừa tạo
         SigningSession session = SigningSession.builder()
                 .sessionId(tempSessionId)
                 .user(user)
@@ -218,24 +220,10 @@ public class SignningService {
                 .status(SessionStatus.ACTIVE)
                 .build();
         session = signingSessionRepository.save(session);
-        List<SignaturePrepare> prepareList = new ArrayList<>();
-        for (DocumentSigner ds : documentSignerList) {
-            String hashFile = preSealHashMap.get(ds.getDocument().getDocumentId());
-            long timeStamp = System.currentTimeMillis();
-            String messageToSign =
-                    buildMessToSign(ds.getDocument().getDocumentId(), hashFile, ds.getSignerEmail(), timeStamp);
-            String messageToSignHash = hashMessageToSign(messageToSign);
 
-            SignaturePrepare prepare = SignaturePrepare.builder()
-                    .signingSession(session)
-                    .document(ds.getDocument())
-                    .docSigner(ds)
-                    .messageToSign(messageToSign)
-                    .messageToSignHash(messageToSignHash)
-                    .baseFinalFileUrl(ds.getDocument().getFinalFileUrl())
-                    .build();
-
-            prepareList.add(prepare);
+        // 4. Liên kết Session vào Prepare và lưu DB
+        for (SignaturePrepare prepare : prepareList) {
+            prepare.setSigningSession(session);
         }
         signaturePrepareRepository.saveAll(prepareList);
 
@@ -525,6 +513,7 @@ public class SignningService {
                         credentialIdBase64);
             }
 
+            // lưu trữ toàn bộ bối cảnh kí gồm chữ kí + challange , tên miền và bối canh kí
             String digitalSignatureBase64 =
                     Base64.getEncoder().encodeToString(credentialJson.getBytes(StandardCharsets.UTF_8));
 
@@ -572,8 +561,17 @@ public class SignningService {
                 .timestamp(LocalDateTime.now())
                 .build();
 
-        // 4. Seal document (append audit page + PAdES)
-        byte[] finalPdfBytes = sealDocument(inputPdfBytes, auditTrail, ds);
+        // 4. Platform Sealing: Chỉ đóng mộc PAdES khi là người cuối cùng ký
+        byte[] finalPdfBytes;
+        if (ctx.isLastSigner()) {
+            log.info("[processDocumentSigning] Người cuối cùng → Đóng mộc PAdES cho doc {}", doc.getDocumentId());
+            finalPdfBytes = sealDocument(inputPdfBytes, auditTrail, ds);
+        } else {
+            log.info(
+                    "[processDocumentSigning] Chưa phải người cuối → Bỏ qua niêm phong cho doc {}",
+                    doc.getDocumentId());
+            finalPdfBytes = inputPdfBytes;
+        }
         String pdfHashAfter = hashDocumentSHA256(finalPdfBytes);
         auditTrail.setPdfHashAfter(pdfHashAfter);
 
@@ -630,7 +628,8 @@ public class SignningService {
                 .orElseThrow(() -> new RuntimeException("Lỗi dữ liệu: Không tìm thấy SignaturePrepare."));
 
         // Re-fetch document từ DB để lấy trạng thái mới nhất với PESSIMISTIC_WRITE lock
-        // Việc cấp Lock ở đây giúp ngăn chặn TOCTOU (Time-of-Check to Time-of-Use) nếu có 2 thread cùng
+        // Việc cấp Lock ở đây giúp ngăn chặn TOCTOU (Time-of-Check to Time-of-Use) nếu
+        // có 2 thread cùng
         // completeSignning ở 1 miligiây.
         String currentFinalUrl = documentRepository.findCurrentFinalFileUrlWithLock(doc.getDocumentId());
 

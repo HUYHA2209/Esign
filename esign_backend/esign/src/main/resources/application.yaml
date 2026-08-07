@@ -12,7 +12,7 @@ spring:
     url: "jdbc:mysql://localhost:3306/esign_dtb"
     driverClassName: "com.mysql.cj.jdbc.Driver"
     username: root
-    password: 123456
+    password:
   jpa:
     hibernate:
       ddl-auto: update
@@ -45,7 +45,7 @@ platform:
   signature:
     keystore:
       path: E:/sercurity/certificate.p12
-      password: 123456
+      password: 
       alias: Esign_App # (Thường là tên mặc định khi tạo chứng chỉ)
 
 app:
