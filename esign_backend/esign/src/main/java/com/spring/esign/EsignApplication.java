@@ -7,7 +7,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableScheduling
 public class EsignApplication {
-
     public static void main(String[] args) {
         SpringApplication.run(EsignApplication.class, args);
     }

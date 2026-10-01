@@ -207,7 +207,7 @@ public class AuthenticationService {
 
         JWSObject jwsObject = new JWSObject(jwsHeader, payload);
         try {
-            jwsObject.sign(new MACSigner(SIGN_KEY.getBytes()));
+            jwsObject.sign(new MACSigner(SIGN_KEY.getBytes())); // ki jws token
             return jwsObject.serialize();
         } catch (Exception e) {
             AuthenticationService.log.error("Cannot creat token", e);
@@ -216,7 +216,7 @@ public class AuthenticationService {
     }
 
     private SignedJWT verifyToken(String token) throws JOSEException, ParseException {
-        JWSVerifier verifier = new MACVerifier(SIGN_KEY.getBytes());
+        JWSVerifier verifier = new MACVerifier(SIGN_KEY.getBytes()); // xac minh chu ki
 
         SignedJWT signedJWT = SignedJWT.parse(token);
 
