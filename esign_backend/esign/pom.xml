@@ -164,6 +164,13 @@
             <artifactId>bcpkix-jdk18on</artifactId>
             <version>1.76</version>
         </dependency>
+
+        <!-- Đọc file .env -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+            <version>4.0.0</version>
+        </dependency>
     </dependencies>
 
     <build>

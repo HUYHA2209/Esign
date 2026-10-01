@@ -9,7 +9,7 @@ spring:
       max-file-size: 50MB
       max-request-size: 50MB
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3307/esign_dtb}
+    url: ${DB_URL}
     driverClassName: "com.mysql.cj.jdbc.Driver"
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:123456}
@@ -21,7 +21,7 @@ spring:
     host: smtp.gmail.com
     port: 587
     username: "hah3182004@gmail.com"
-    password: ""
+    password: ${MAIL_PASSWORD}
     properties:
       mail:
         smtp:
@@ -30,14 +30,14 @@ spring:
             enable: true
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
+      host: ${REDIS_HOST}
       port: 6379
 
 jwt:
-  signerKey: "Fq7Yy2toMGICCK6a0GIIuZUMlcKxe5SAjC42eqBi0taBvpcKAXcysVHkkx7IDkJ+"
+  signerKey: ${JWT_SECRET}
 
 minio:
-  url: ${MINIO_URL:http://localhost:9000}
+  url: ${MINIO_URL}
   access-key: minioadmin
   secret-key: minioadmin
 
@@ -45,7 +45,7 @@ platform:
   signature:
     keystore:
       path: classpath:certificate.p12
-      password: 123456
+      password: ${KEYSTORE_PASSWORD}
       alias: Esign_App # (Thường là tên mặc định khi tạo chứng chỉ)
 
 app:
